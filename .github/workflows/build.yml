@@ -68,7 +68,7 @@ on:
           - kowsu
           - xxksu
       FLASHABLE_TYPE:
-        description: '📦 Flashable Type (original = .gz-dtb, san-kernel = .xz)'
+        description: '📦 Flashable Type'
         required: true
         default: 'original'
         type: choice
