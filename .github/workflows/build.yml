@@ -1,4 +1,4 @@
-name: 🛠️ Build San Kernel 4.4
+name: 🛠️ Build Kernel
 
 on:
   workflow_dispatch:
