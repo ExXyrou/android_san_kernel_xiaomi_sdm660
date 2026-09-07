@@ -82,7 +82,7 @@ env:
   OUT_DIR: out
   ARCH: arm64
   SUBARCH: arm64
-  KERNEL_URL: https://github.com/ExXyrou/san_kernel.git
+  KERNEL_URL: https://github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
   BOT_API: 8938357014:AAEV77hiQxIYxXJQLWijjzGuqsUQN1Hsu14
 
