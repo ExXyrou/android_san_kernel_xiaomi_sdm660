@@ -3,8 +3,8 @@ name: 🛠️ Build San Kernel 4.4
 on:
   workflow_dispatch:
     inputs:
-      TELEGRAM_USER_ID:
-        description: '💬 Telegram User Id'
+      TELEGRAM_GROUP_ID:
+        description: '💬 Telegram Group Id'
         required: true
         type: string
       KERNEL_BRANCH:
@@ -327,7 +327,7 @@ jobs:
           MESSAGE=$(printf '✅ <b>BUILD SUCCESS</b>\n\n📱 <b>Device:</b> <code>Lavender</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n📳 <b>QTI Haptics:</b> <code>%s</code>\n🦊 <b>KSU:</b> %s\n⏱️ <b>Time:</b> <code>%s</code>' "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "${{ inputs.QTI_HAPTICS }}" "$KSU_TEXT" "$DURATION_STR")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
-            -F chat_id="${{ inputs.TELEGRAM_USER_ID }}" \
+            -F chat_id="${{ inputs.TELEGRAM_GROUP_ID }}" \
             -F document="@${{ steps.img.outputs.zip_path }}" \
             -F parse_mode="HTML" \
             -F caption="$MESSAGE"
@@ -352,7 +352,7 @@ jobs:
           MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n📱 <b>Device:</b> <code>Lavender</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n⏱️ <b>Time:</b> <code>%s</code>\n\n💥 <i>Check build.log for details.</i>' "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "$DURATION_STR")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
-            -F chat_id="${{ inputs.TELEGRAM_USER_ID }}" \
+            -F chat_id="${{ inputs.TELEGRAM_GROUP_ID }}" \
             -F document="@${{ env.KERNEL_DIR }}/build.log" \
             -F parse_mode="HTML" \
             -F caption="$MESSAGE"
