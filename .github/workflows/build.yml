@@ -18,7 +18,7 @@ on:
       KERNEL_BRANCH:
         description: '🌿 Select Kernel Branch'
         required: true
-        default: 'none'
+        default: 'st74-ksun'
         type: choice
         options:
           - st74-ksun
