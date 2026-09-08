@@ -7,6 +7,14 @@ on:
         description: '💬 Telegram Group Id'
         required: true
         type: string
+      DEVICE:
+        description: '📱 Select Device'
+        required: true
+        default: 'lavender'
+        type: choice
+        options:
+          - lavender
+          - whyred
       KERNEL_BRANCH:
         description: '🌿 Select Kernel Branch'
         required: true
@@ -15,10 +23,6 @@ on:
         options:
           - PLTS
           - st74
-      DEFCONFIG:
-        description: '⚙️ Kernel Defconfig'
-        required: true
-        type: string
       DISPLAY_BRANCH_NAME:
         description: '🏷️ Display Branch Name'
         required: true
@@ -113,7 +117,6 @@ jobs:
           BASE_NAME="${CLEAN_INPUT:-}"
           
           if [ "${{ inputs.DISPLAY_BRANCH_NAME }}" == "true" ]; then
-            FINAL_LOCAL="${BASE_NAME:+-${{ inputs.KERNEL_BRANCH }}-$BASE_NAME:-${{ inputs.KERNEL_BRANCH }}}"
             if [ -n "$BASE_NAME" ]; then
               FINAL_LOCAL="-${{ inputs.KERNEL_BRANCH }}-${BASE_NAME}"
             else
@@ -152,9 +155,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ccache-eas-${{ inputs.DEFCONFIG }}-${{ github.run_id }}
+          key: ccache-eas-${{ inputs.DEVICE }}-${{ github.run_id }}
           restore-keys: |
-            ccache-eas-${{ inputs.DEFCONFIG }}-
+            ccache-eas-${{ inputs.DEVICE }}-
 
       - name: Setup KernelSU
         if: ${{ inputs.INJECT_KSU != 'none' }}
@@ -197,8 +200,14 @@ jobs:
         run: |
           [ -f kernel/sched/sched.h ] && sed -i 's/cpu_rq(cpu)->cfs->cumulative_runnable_avg/cpu_rq(cpu)->cfs.cumulative_runnable_avg/g' kernel/sched/sched.h
           
+          if [ "${{ inputs.DEVICE }}" == "whyred" ]; then
+            DEFCONFIG="whyred_defconfig"
+          else
+            DEFCONFIG="lavender_defconfig"
+          fi
+          
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
-          make O=$OUT_DIR ARCH=${{ env.ARCH }} CC="$GITHUB_WORKSPACE/$CLANG_DIR/bin/clang" CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- ${{ inputs.DEFCONFIG }}
+          make O=$OUT_DIR ARCH=${{ env.ARCH }} CC="$GITHUB_WORKSPACE/$CLANG_DIR/bin/clang" CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- $DEFCONFIG
 
           enable_config() { ./scripts/config --file "$OUT_DIR/.config" --enable "$1"; }
           disable_config() { ./scripts/config --file "$OUT_DIR/.config" --disable "$1"; }
@@ -302,7 +311,7 @@ jobs:
           FINAL_LOCALVER=$(echo "${{ env.KERNEL_NAME_STRING }}" | sed 's/^-//')
           sed -i -E 's/^(kernel\.string=).*/\1'"$FINAL_LOCALVER"'/' anykernel.sh
           
-          ZIP_NAME="lavender-${{ env.KERNEL_VERSION }}${{ env.KERNEL_NAME_STRING }}-$(date +'%Y%m%d').zip"
+          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}{{ env.KERNEL_NAME_STRING }}-$(date +'%Y%m%d').zip"
           zip -r9 "$ZIP_NAME" * -x ".git/*"
           
           echo "zip_path=$GITHUB_WORKSPACE/AnyKernel3/$ZIP_NAME" >> "$GITHUB_OUTPUT"
@@ -324,7 +333,7 @@ jobs:
             KSU_TEXT='<code>none</code>'
           fi
 
-          MESSAGE=$(printf '✅ <b>BUILD SUCCESS</b>\n\n📱 <b>Device:</b> <code>Lavender</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n📳 <b>QTI Haptics:</b> <code>%s</code>\n🦊 <b>KSU:</b> %s\n⏱️ <b>Time:</b> <code>%s</code>' "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "${{ inputs.QTI_HAPTICS }}" "$KSU_TEXT" "$DURATION_STR")
+          MESSAGE=$(printf '✅ <b>BUILD SUCCESS</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n📳 <b>QTI Haptics:</b> <code>%s</code>\n🦊 <b>KSU:</b> %s\n⏱️ <b>Time:</b> <code>%s</code>' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "${{ inputs.QTI_HAPTICS }}" "$KSU_TEXT" "$DURATION_STR")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ inputs.TELEGRAM_GROUP_ID }}" \
@@ -349,7 +358,7 @@ jobs:
             KSU_TEXT='<code>none</code>'
           fi
 
-          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n📱 <b>Device:</b> <code>Lavender</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n⏱️ <b>Time:</b> <code>%s</code>\n\n💥 <i>Check build.log for details.</i>' "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "$DURATION_STR")
+          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n⏱️ <b>Time:</b> <code>%s</code>\n\n💥 <i>Check build.log for details.</i>' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "$DURATION_STR")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ inputs.TELEGRAM_GROUP_ID }}" \
