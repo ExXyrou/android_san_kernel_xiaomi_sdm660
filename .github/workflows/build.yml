@@ -362,7 +362,7 @@ jobs:
             KSU_TEXT='<code>none</code>'
           fi
 
-          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n⏱️ <b>Time:</b> <code>%s</code>\n\n💥 <i>Check build.log for details.</i>' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "$DURATION_STR")
+          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⏱️ <b>Time:</b> <code>%s</code>\n\n💥 <i>Check build.log for details.</i>' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$DURATION_STR")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ inputs.TELEGRAM_GROUP_ID }}" \
