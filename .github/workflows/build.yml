@@ -18,11 +18,13 @@ on:
       KERNEL_BRANCH:
         description: '🌿 Select Kernel Branch'
         required: true
-        default: 'PLTS'
+        default: 'st74-ksun'
         type: choice
         options:
+          - st74-ksun
           - PLTS
           - st74
+          - st78
       DISPLAY_BRANCH_NAME:
         description: '🏷️ Display Branch Name'
         required: true
@@ -325,7 +327,7 @@ jobs:
           DURATION_STR="$((DURATION / 60))m $((DURATION % 60))s"
           CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           
-          if [ "${{ inputs.KERNEL_BRANCH }}" == "st74" ]; then
+          if [ "${{ inputs.KERNEL_BRANCH }}" == "st74-ksun" ]; then
             KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/64?single">ksun</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "kowsu" ]; then
             KSU_TEXT='<a href="https://t.me/kowsu_build">kowsu</a>'
@@ -350,7 +352,7 @@ jobs:
           DURATION_STR="$((DURATION / 60))m $((DURATION % 60))s"
           CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           
-          if [ "${{ inputs.KERNEL_BRANCH }}" == "st74" ]; then
+          if [ "${{ inputs.KERNEL_BRANCH }}" == "st74-ksun" ]; then
             KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/64?single">ksun</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "kowsu" ]; then
             KSU_TEXT='<a href="https://t.me/kowsu_build">kowsu</a>'
