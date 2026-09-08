@@ -328,7 +328,7 @@ jobs:
           CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           
           if [ "${{ inputs.KERNEL_BRANCH }}" == "st74-ksun" ]; then
-            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/64?single">ksun</a>'
+            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/70?single">ksun</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "kowsu" ]; then
             KSU_TEXT='<a href="https://t.me/kowsu_build">kowsu</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "xxksu" ]; then
@@ -353,7 +353,7 @@ jobs:
           CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           
           if [ "${{ inputs.KERNEL_BRANCH }}" == "st74-ksun" ]; then
-            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/64?single">ksun</a>'
+            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/70?single">ksun</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "kowsu" ]; then
             KSU_TEXT='<a href="https://t.me/kowsu_build">kowsu</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "xxksu" ]; then
