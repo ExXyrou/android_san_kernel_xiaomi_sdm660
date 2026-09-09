@@ -3,8 +3,8 @@ name: 🛠️ Build Kernel
 on:
   workflow_dispatch:
     inputs:
-      TELEGRAM_GROUP_ID:
-        description: '💬 Telegram Group Id'
+      TELEGRAM_USERNAME:
+        description: '👤 Telegram Username'
         required: true
         type: string
       DEVICE:
@@ -81,6 +81,11 @@ on:
         options:
           - original
           - san-kernel
+      TEST_BUILD:
+        description: '🧪 Test Build'
+        required: true
+        default: false
+        type: boolean
 
 env:
   KERNEL_DIR: kernel_source
@@ -315,7 +320,12 @@ jobs:
 
           sed -i "s/^device\.name1=.*/device.name1=${{ inputs.DEVICE }}/" anykernel.sh
           
-          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}-${{ env.KERNEL_NAME_STRING }}-$(date +'%Y%m%d').zip"
+          if [ "${{ inputs.TEST_BUILD }}" == "true" ]; then
+            ZIP_NAME="testbuild-${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}${{ env.KERNEL_NAME_STRING }}-$(date +'%Y%m%d').zip"
+          else
+            ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}${{ env.KERNEL_NAME_STRING }}-$(date +'%Y%m%d').zip"
+          fi
+
           zip -r9 "$ZIP_NAME" * -x ".git/*"
           
           echo "zip_path=$GITHUB_WORKSPACE/AnyKernel3/$ZIP_NAME" >> "$GITHUB_OUTPUT"
@@ -337,10 +347,10 @@ jobs:
             KSU_TEXT='<code>none</code>'
           fi
 
-          MESSAGE=$(printf '✅ <b>BUILD SUCCESS</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n📳 <b>QTI Haptics:</b> <code>%s</code>\n🦊 <b>KSU:</b> %s\n⏱️ <b>Time:</b> <code>%s</code>' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "${{ inputs.QTI_HAPTICS }}" "$KSU_TEXT" "$DURATION_STR")
+          MESSAGE=$(printf '✅ <b>BUILD SUCCESS</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n📳 <b>QTI Haptics:</b> <code>%s</code>\n🦊 <b>KSU:</b> %s\n⏱️ <b>Time:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "${{ inputs.QTI_HAPTICS }}" "$KSU_TEXT" "$DURATION_STR" "${{ inputs.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
-            -F chat_id="${{ inputs.TELEGRAM_GROUP_ID }}" \
+            -F chat_id="-1004324974450" \
             -F document="@${{ steps.img.outputs.zip_path }}" \
             -F parse_mode="HTML" \
             -F caption="$MESSAGE"
@@ -350,22 +360,11 @@ jobs:
         run: |
           DURATION=$(( $(date +%s) - ${{ env.BUILD_START_TIME }} ))
           DURATION_STR="$((DURATION / 60))m $((DURATION % 60))s"
-          CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           
-          if [ "${{ inputs.KERNEL_BRANCH }}" == "st74-ksun" ]; then
-            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/70?single">ksun</a>'
-          elif [ "${{ inputs.INJECT_KSU }}" == "kowsu" ]; then
-            KSU_TEXT='<a href="https://t.me/kowsu_build">kowsu</a>'
-          elif [ "${{ inputs.INJECT_KSU }}" == "xxksu" ]; then
-            KSU_TEXT='<a href="${{ env.KSU_LINK }}">xxksu</a>'
-          else
-            KSU_TEXT='<code>none</code>'
-          fi
-
-          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⏱️ <b>Time:</b> <code>%s</code>\n\n💥 <i>Check build.log for details.</i>' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$DURATION_STR")
+          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⏱️ <b>Time:</b> <code>%s</code>\n\n💥 <i>Check build.log for details.</i>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$DURATION_STR" "${{ inputs.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
-            -F chat_id="${{ inputs.TELEGRAM_GROUP_ID }}" \
+            -F chat_id="-1004324974450" \
             -F document="@${{ env.KERNEL_DIR }}/build.log" \
             -F parse_mode="HTML" \
             -F caption="$MESSAGE"
