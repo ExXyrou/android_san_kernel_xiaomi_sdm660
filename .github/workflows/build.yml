@@ -25,8 +25,8 @@ on:
           - PLTS
           - st74
           - st78
-      REMOVE_BRANCH_NAME:
-        description: '🗑️ Remove Extraversion (e.g., -st74)'
+      DISPLAY_BRANCH_NAME:
+        description: '🏷️ Display Branch Name'
         required: true
         default: false
         type: boolean
@@ -112,17 +112,14 @@ jobs:
       - name: Configure Kernel Version & Strings
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          if [ "${{ inputs.REMOVE_BRANCH_NAME }}" == "true" ]; then
-            sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/' Makefile
-            echo "Makefile EXTRAVERSION cleared."
-          fi
-
           CLEAN_INPUT=$(echo "${{ inputs.LOCALVERSION }}" | sed 's/^-//')
           
-          MAKEFILE_EXTRA=$(grep -m1 '^EXTRAVERSION' Makefile | cut -d'=' -f2 | tr -d '[:space:]')
-          
-          if [ "${{ inputs.REMOVE_BRANCH_NAME }}" == "false" ] && [ -n "$MAKEFILE_EXTRA" ]; then
-            BRANCH_TAG="${MAKEFILE_EXTRA}"
+          if [ "${{ inputs.DISPLAY_BRANCH_NAME }}" == "true" ]; then
+            if [ "${{ inputs.KERNEL_BRANCH }}" == "st74-ksun" ]; then
+              BRANCH_TAG="-st74"
+            else
+              BRANCH_TAG="-${{ inputs.KERNEL_BRANCH }}"
+            fi
           else
             BRANCH_TAG=""
           fi
@@ -340,7 +337,7 @@ jobs:
 
           sed -i "s/^device\.name1=.*/device.name1=${{ inputs.DEVICE }}/" anykernel.sh
           
-          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}${{ env.KERNEL_NAME_STRING }}-$(date +'%Y%d%m').zip"
+          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}{{ env.KERNEL_NAME_STRING }}-$(date +'%Y%d%m').zip"
 
           zip -r9 "$ZIP_NAME" * -x ".git/*"
           
