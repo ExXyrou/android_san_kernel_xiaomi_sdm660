@@ -26,12 +26,13 @@ on:
           - st74
           - st78
       REMOVE_BRANCH_NAME:
-        description: '🗑️ Remove Branch Name'
+        description: '🗑️ Remove Makefile Extraversion'
         required: true
         default: false
         type: boolean
       LOCALVERSION:
         description: '🏷️ Custom Kernel Name (e.g., MyKernel-v1.0)'
+        required: true
         required: false
         type: string
       LOCALVERSION_AUTO:
@@ -112,17 +113,17 @@ jobs:
       - name: Configure Kernel Version & Strings
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          CLEAN_INPUT=$(echo "${{ inputs.LOCALVERSION }}" | sed 's/^-//')
-          BASE_NAME="${CLEAN_INPUT:-}"
-          
           if [ "${{ inputs.REMOVE_BRANCH_NAME }}" == "true" ]; then
-            FINAL_LOCAL="${BASE_NAME:+-${BASE_NAME}}"
+            sed -i 's/^EXTRAVERSION.*/EXTRAVERSION =/' Makefile
+            echo "Makefile EXTRAVERSION cleared."
+          fi
+
+          CLEAN_INPUT=$(echo "${{ inputs.LOCALVERSION }}" | sed 's/^-//')
+          
+          if [ -n "$CLEAN_INPUT" ]; then
+            FINAL_LOCAL="-${CLEAN_INPUT}"
           else
-            if [ -n "$BASE_NAME" ]; then
-              FINAL_LOCAL="-${{ inputs.KERNEL_BRANCH }}-${BASE_NAME}"
-            else
-              FINAL_LOCAL="-${{ inputs.KERNEL_BRANCH }}"
-            fi
+            FINAL_LOCAL=""
           fi
           
           echo "KERNEL_NAME_STRING=$FINAL_LOCAL" >> $GITHUB_ENV
