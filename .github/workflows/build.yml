@@ -33,7 +33,6 @@ on:
       LOCALVERSION:
         description: '🏷️ Custom Kernel Name (e.g., MyKernel-v1.0)'
         required: true
-        required: false
         type: string
       LOCALVERSION_AUTO:
         description: '🔧 Enable Localversion Auto'
