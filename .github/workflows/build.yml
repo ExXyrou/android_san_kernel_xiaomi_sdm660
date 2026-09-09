@@ -25,8 +25,8 @@ on:
           - PLTS
           - st74
           - st78
-      DISPLAY_BRANCH_NAME:
-        description: '🏷️ Display Branch Name'
+      REMOVE_BRANCH_NAME:
+        description: '🗑️ Remove Branch Name'
         required: true
         default: false
         type: boolean
@@ -39,21 +39,6 @@ on:
         required: true
         default: false
         type: boolean
-      DEFAULT_HOSTNAME:
-        description: '💻 Kernel Hostname (e.g., xiaomi@redmi)'
-        required: true
-        default: xiaomi@redmi
-        type: string
-      BUILD_USER:
-        description: '👤 Build Username (e.g., xiaomi)'
-        required: true
-        default: xiaomi
-        type: string
-      BUILD_HOST:
-        description: '🖥️ Build Hostname (e.g., redmi)'
-        required: true
-        default: redmi
-        type: string
       QTI_HAPTICS:
         description: '📳 Include QTI Haptics Support'
         required: true
@@ -81,11 +66,6 @@ on:
         options:
           - original
           - san-kernel
-      TEST_BUILD:
-        description: '⚠️ Test Build'
-        required: true
-        default: false
-        type: boolean
       COMPILER:
         description: '🛠️ Select Compiler'
         required: true
@@ -106,6 +86,9 @@ env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
   BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
   TELEGRAM_GROUP_ID: -1004324974450
+  DEFAULT_HOSTNAME: xiaomi@redmi
+  BUILD_USER: xiaomi
+  BUILD_HOST: redmi
 
 jobs:
   build:
@@ -114,7 +97,7 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout Repository & Start Timer
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
@@ -133,21 +116,13 @@ jobs:
           CLEAN_INPUT=$(echo "${{ inputs.LOCALVERSION }}" | sed 's/^-//')
           BASE_NAME="${CLEAN_INPUT:-}"
           
-          if [ "${{ inputs.DISPLAY_BRANCH_NAME }}" == "true" ]; then
-            if [ -n "$BASE_NAME" ]; then
-              if [[ "$BASE_NAME" == *"${{ inputs.KERNEL_BRANCH }}"* ]]; then
-                FINAL_LOCAL="-${BASE_NAME}"
-              else
-                FINAL_LOCAL="-${{ inputs.KERNEL_BRANCH }}-${BASE_NAME}"
-              fi
-            else
-              FINAL_LOCAL="-${{ inputs.KERNEL_BRANCH }}"
-            fi
+          if [ "${{ inputs.REMOVE_BRANCH_NAME }}" == "true" ]; then
+            FINAL_LOCAL="${BASE_NAME:+-${BASE_NAME}}"
           else
             if [ -n "$BASE_NAME" ]; then
-              FINAL_LOCAL="-${BASE_NAME}"
+              FINAL_LOCAL="-${{ inputs.KERNEL_BRANCH }}-${BASE_NAME}"
             else
-              FINAL_LOCAL=""
+              FINAL_LOCAL="-${{ inputs.KERNEL_BRANCH }}"
             fi
           fi
           
@@ -221,13 +196,15 @@ jobs:
               CLANG_SUBDIR=$(find "$CLANG_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
               [ -n "$CLANG_SUBDIR" ] && mv "$CLANG_SUBDIR"/* "$CLANG_DIR/"
             fi
-            echo "CLANG_VERSION=ZyC Clang (Latest)" >> $GITHUB_ENV
+            ZYC_TAG=$(curl -s https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -n 1 | cut -d'"' -f4)
+            echo "CLANG_DISPLAY_VERSION=ZyCromerZ Clang ($ZYC_TAG)" >> $GITHUB_ENV
 
           elif [ "${{ inputs.COMPILER }}" == "proton" ]; then
             echo "Cloning Proton Clang..."
             rm -rf "$CLANG_DIR"
             git clone --depth=1 https://github.com/kdrag0n/proton-clang.git "$CLANG_DIR"
-            echo "CLANG_VERSION=Proton Clang" >> $GITHUB_ENV
+            PROTON_VER=$(cd "$CLANG_DIR" && git log -1 --format="%h (%ad)" --date=short 2>/dev/null || echo "Latest")
+            echo "CLANG_DISPLAY_VERSION=Proton Clang ($PROTON_VER)" >> $GITHUB_ENV
 
           elif [ "${{ inputs.COMPILER }}" == "neutron" ]; then
             echo "Downloading Neutron Clang via Antman..."
@@ -236,7 +213,8 @@ jobs:
             chmod +x antman
             ./antman -S
             ./antman --patch=glibc
-            echo "CLANG_VERSION=Neutron Clang" >> $GITHUB_ENV
+            NEUTRON_VER=$(./antman --version 2>/dev/null || echo "Latest")
+            echo "CLANG_DISPLAY_VERSION=Neutron Clang ($NEUTRON_VER)" >> $GITHUB_ENV
           fi
 
       - name: Prepare Configs & Build Options
@@ -257,7 +235,7 @@ jobs:
           disable_config() { ./scripts/config --file "$OUT_DIR/.config" --disable "$1"; }
           set_str() { ./scripts/config --file "$OUT_DIR/.config" --set-str "$1" "$2"; }
           
-          set_str CONFIG_DEFAULT_HOSTNAME "${{ inputs.DEFAULT_HOSTNAME }}"
+          set_str CONFIG_DEFAULT_HOSTNAME "${{ env.DEFAULT_HOSTNAME }}"
           set_str CONFIG_LOCALVERSION "${{ env.KERNEL_NAME_STRING }}"
           
           if [ "${{ inputs.LOCALVERSION_AUTO }}" == "true" ]; then
@@ -292,8 +270,8 @@ jobs:
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
-          export KBUILD_BUILD_USER="${{ inputs.BUILD_USER }}"
-          export KBUILD_BUILD_HOST="${{ inputs.BUILD_HOST }}"
+          export KBUILD_BUILD_USER="${{ env.BUILD_USER }}"
+          export KBUILD_BUILD_HOST="${{ env.BUILD_HOST }}"
           
           make -j$(nproc --all) O=$OUT_DIR ARCH=${{ env.ARCH }} \
             CC="ccache $GITHUB_WORKSPACE/$CLANG_DIR/bin/clang" \
@@ -357,14 +335,7 @@ jobs:
 
           sed -i "s/^device\.name1=.*/device.name1=${{ inputs.DEVICE }}/" anykernel.sh
           
-          RAW_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}${{ env.KERNEL_NAME_STRING }}-$(date +'%Y%m%d').zip"
-          CLEANED_NAME=$(echo "$RAW_NAME" | sed 's/\-\-/-/g' | tr '_' '-')
-
-          if [ "${{ inputs.TEST_BUILD }}" == "true" ]; then
-            ZIP_NAME="testbuild-$CLEANED_NAME"
-          else
-            ZIP_NAME="$CLEANED_NAME"
-          fi
+          ZIP_NAME="${{ inputs.DEVICE }}-${{ inputs.KERNEL_BRANCH }}-${{ inputs.COMPILER }}.zip"
 
           zip -r9 "$ZIP_NAME" * -x ".git/*"
           
@@ -373,8 +344,6 @@ jobs:
       - name: Send Telegram Notification (Success)
         if: success()
         run: |
-          DURATION=$(( $(date +%s) - ${{ env.BUILD_START_TIME }} ))
-          DURATION_STR="$((DURATION / 60))m $((DURATION % 60))s"
           CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           
           if [ "${{ inputs.KERNEL_BRANCH }}" == "st74-ksun" ]; then
@@ -387,7 +356,7 @@ jobs:
             KSU_TEXT='<code>none</code>'
           fi
 
-          MESSAGE=$(printf '✅ <b>BUILD SUCCESS</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n📳 <b>QTI Haptics:</b> <code>%s</code>\n🦊 <b>KSU:</b> %s\n⏱️ <b>Time:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "${{ inputs.QTI_HAPTICS }}" "$KSU_TEXT" "$DURATION_STR" "${{ inputs.TELEGRAM_USERNAME }}")
+          MESSAGE=$(printf '✅ <b>BUILD SUCCESS</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n🛠️ <b>Clang Compiler:</b> <code>%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n📳 <b>QTI Haptics:</b> <code>%s</code>\n🦊 <b>KSU:</b> %s\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "${{ env.CLANG_DISPLAY_VERSION }}" "$CAM_TYPE" "${{ inputs.QTI_HAPTICS }}" "$KSU_TEXT" "${{ inputs.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
@@ -398,10 +367,7 @@ jobs:
       - name: Send Telegram Notification (Failure)
         if: failure()
         run: |
-          DURATION=$(( $(date +%s) - ${{ env.BUILD_START_TIME }} ))
-          DURATION_STR="$((DURATION / 60))m $((DURATION % 60))s"
-          
-          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⏱️ <b>Time:</b> <code>%s</code>\n\n💥 <i>Check build.log for details.</i>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$DURATION_STR" "${{ inputs.TELEGRAM_USERNAME }}")
+          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n\n💥 <i>Check build.log for details.</i>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "${{ inputs.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
