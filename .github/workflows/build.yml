@@ -1,4 +1,4 @@
-name: 🛠️ Build Kernel (test)
+name: 🛠️ Build Kernel
 
 on:
   workflow_dispatch:
