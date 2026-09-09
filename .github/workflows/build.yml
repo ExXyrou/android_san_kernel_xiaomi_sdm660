@@ -26,7 +26,7 @@ on:
           - st74
           - st78
       REMOVE_BRANCH_NAME:
-        description: '🗑️ Remove Makefile Extraversion'
+        description: '🗑️ Remove Extraversion (e.g., -st74)'
         required: true
         default: false
         type: boolean
