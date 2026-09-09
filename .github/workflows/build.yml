@@ -119,8 +119,10 @@ jobs:
 
           CLEAN_INPUT=$(echo "${{ inputs.LOCALVERSION }}" | sed 's/^-//')
           
-          if [ "${{ inputs.REMOVE_BRANCH_NAME }}" == "false" ]; then
-            BRANCH_TAG="-${{ inputs.KERNEL_BRANCH }}"
+          MAKEFILE_EXTRA=$(grep -m1 '^EXTRAVERSION' Makefile | cut -d'=' -f2 | tr -d '[:space:]')
+          
+          if [ "${{ inputs.REMOVE_BRANCH_NAME }}" == "false" ] && [ -n "$MAKEFILE_EXTRA" ]; then
+            BRANCH_TAG="${MAKEFILE_EXTRA}"
           else
             BRANCH_TAG=""
           fi
