@@ -217,7 +217,6 @@ jobs:
             curl -LSs "$CLANG_URL" -o zyc_clang.tar.gz
             tar -zxf zyc_clang.tar.gz -C "$CLANG_DIR" && rm -f zyc_clang.tar.gz
             
-            # Pindahkan file jika terekstrak ke dalam sub-folder
             if [ ! -d "$CLANG_DIR/bin" ]; then
               CLANG_SUBDIR=$(find "$CLANG_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
               [ -n "$CLANG_SUBDIR" ] && mv "$CLANG_SUBDIR"/* "$CLANG_DIR/"
@@ -388,7 +387,7 @@ jobs:
             KSU_TEXT='<code>none</code>'
           fi
 
-          MESSAGE=$(printf '✅ <b>BUILD SUCCESS</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n🛠️ <b>Compiler:</b> <code>%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n📳 <b>QTI Haptics:</b> <code>%s</code>\n🦊 <b>KSU:</b> %s\n⏱️ <b>Time:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "${{ inputs.COMPILER }}" "$CAM_TYPE" "${{ inputs.QTI_HAPTICS }}" "$KSU_TEXT" "$DURATION_STR" "${{ inputs.TELEGRAM_USERNAME }}")
+          MESSAGE=$(printf '✅ <b>BUILD SUCCESS</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n📳 <b>QTI Haptics:</b> <code>%s</code>\n🦊 <b>KSU:</b> %s\n⏱️ <b>Time:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "${{ inputs.QTI_HAPTICS }}" "$KSU_TEXT" "$DURATION_STR" "${{ inputs.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
@@ -402,7 +401,7 @@ jobs:
           DURATION=$(( $(date +%s) - ${{ env.BUILD_START_TIME }} ))
           DURATION_STR="$((DURATION / 60))m $((DURATION % 60))s"
           
-          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n🛠️ <b>Compiler:</b> <code>%s</code>\n⏱️ <b>Time:</b> <code>%s</code>\n\n💥 <i>Check build.log for details.</i>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "${{ inputs.COMPILER }}" "$DURATION_STR" "${{ inputs.TELEGRAM_USERNAME }}")
+          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⏱️ <b>Time:</b> <code>%s</code>\n\n💥 <i>Check build.log for details.</i>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$DURATION_STR" "${{ inputs.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
