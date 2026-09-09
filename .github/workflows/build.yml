@@ -335,7 +335,7 @@ jobs:
 
           sed -i "s/^device\.name1=.*/device.name1=${{ inputs.DEVICE }}/" anykernel.sh
           
-          ZIP_NAME="${{ inputs.DEVICE }}-${{ inputs.KERNEL_BRANCH }}-${{ inputs.COMPILER }}.zip"
+          ZIP_NAME="${{ inputs.DEVICE }}-${{ inputs.KERNEL_BRANCH }}-$(date +'%Y%d%m').zip"
 
           zip -r9 "$ZIP_NAME" * -x ".git/*"
           
