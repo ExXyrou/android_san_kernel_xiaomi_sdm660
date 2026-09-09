@@ -195,13 +195,23 @@ jobs:
               CLANG_SUBDIR=$(find "$CLANG_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
               [ -n "$CLANG_SUBDIR" ] && mv "$CLANG_SUBDIR"/* "$CLANG_DIR/"
             fi
-            echo "CLANG_DISPLAY_VERSION=Zyc Clang 15.0.7" >> $GITHUB_ENV
+            echo "CLANG_DISPLAY_VERSION=ZyC Clang 15.0.7" >> $GITHUB_ENV
 
           elif [ "${{ inputs.COMPILER }}" == "proton" ]; then
             echo "Cloning Proton Clang..."
             rm -rf "$CLANG_DIR"
             git clone --depth=1 https://github.com/kdrag0n/proton-clang.git "$CLANG_DIR"
             echo "CLANG_DISPLAY_VERSION=Proton Clang 13.0.0" >> $GITHUB_ENV
+          fi
+
+      - name: Ensure Clang Version Variable
+        run: |
+          if [ -z "${{ env.CLANG_DISPLAY_VERSION }}" ]; then
+            if [ "${{ inputs.COMPILER }}" == "zyc" ]; then
+              echo "CLANG_DISPLAY_VERSION=ZyC Clang 15.0.7" >> $GITHUB_ENV
+            else
+              echo "CLANG_DISPLAY_VERSION=Proton Clang 13.0.0" >> $GITHUB_ENV
+            fi
           fi
 
       - name: Prepare Configs & Build Options
@@ -322,7 +332,7 @@ jobs:
 
           sed -i "s/^device\.name1=.*/device.name1=${{ inputs.DEVICE }}/" anykernel.sh
           
-          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}-${{ inputs.KERNEL_BRANCH }}-${{ inputs.LOCALVERSION }}-$(date +'%Y%d%m').zip"
+          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}-${{ env.KERNEL_NAME_STRING }}-$(date +'%Y%d%m').zip"
 
           zip -r9 "$ZIP_NAME" * -x ".git/*"
           
