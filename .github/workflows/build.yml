@@ -126,7 +126,11 @@ jobs:
           
           if [ "${{ inputs.DISPLAY_BRANCH_NAME }}" == "true" ]; then
             if [ -n "$BASE_NAME" ]; then
-              FINAL_LOCAL="-${{ inputs.KERNEL_BRANCH }}-${BASE_NAME}"
+              if [[ "$BASE_NAME" == *"${{ inputs.KERNEL_BRANCH }}"* ]]; then
+                FINAL_LOCAL="-${BASE_NAME}"
+              else
+                FINAL_LOCAL="-${{ inputs.KERNEL_BRANCH }}-${BASE_NAME}"
+              fi
             else
               FINAL_LOCAL="-${{ inputs.KERNEL_BRANCH }}"
             fi
