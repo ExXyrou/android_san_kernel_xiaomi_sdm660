@@ -74,7 +74,6 @@ on:
         options:
           - zyc
           - proton
-          - neutron
 
 env:
   KERNEL_DIR: kernel_source
@@ -89,7 +88,6 @@ env:
   BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
   TELEGRAM_GROUP_ID: -1004324974450
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-  
 
 jobs:
   build:
@@ -197,25 +195,13 @@ jobs:
               CLANG_SUBDIR=$(find "$CLANG_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
               [ -n "$CLANG_SUBDIR" ] && mv "$CLANG_SUBDIR"/* "$CLANG_DIR/"
             fi
-            ZYC_TAG=$(curl -s https://api.github.com/repos/ZyCromerZ/Clang/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -n 1 | cut -d'"' -f4)
-            echo "CLANG_DISPLAY_VERSION=ZyCromerZ Clang ($ZYC_TAG)" >> $GITHUB_ENV
+            echo "CLANG_DISPLAY_VERSION=Zyc Clang 15.0.7" >> $GITHUB_ENV
 
           elif [ "${{ inputs.COMPILER }}" == "proton" ]; then
             echo "Cloning Proton Clang..."
             rm -rf "$CLANG_DIR"
             git clone --depth=1 https://github.com/kdrag0n/proton-clang.git "$CLANG_DIR"
-            PROTON_VER=$(cd "$CLANG_DIR" && git log -1 --format="%h (%ad)" --date=short 2>/dev/null || echo "Latest")
-            echo "CLANG_DISPLAY_VERSION=Proton Clang ($PROTON_VER)" >> $GITHUB_ENV
-
-          elif [ "${{ inputs.COMPILER }}" == "neutron" ]; then
-            echo "Downloading Neutron Clang via Antman..."
-            cd "$CLANG_DIR"
-            curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
-            chmod +x antman
-            ./antman -S
-            ./antman --patch=glibc
-            NEUTRON_VER=$(./antman --version 2>/dev/null || echo "Latest")
-            echo "CLANG_DISPLAY_VERSION=Neutron Clang ($NEUTRON_VER)" >> $GITHUB_ENV
+            echo "CLANG_DISPLAY_VERSION=Proton Clang 13.0.0" >> $GITHUB_ENV
           fi
 
       - name: Prepare Configs & Build Options
@@ -336,7 +322,7 @@ jobs:
 
           sed -i "s/^device\.name1=.*/device.name1=${{ inputs.DEVICE }}/" anykernel.sh
           
-          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}-${{ inputs.KERNEL_BRANCH }}-${{ env.KERNEL_NAME_STRING }}-$(date +'%Y%d%m').zip"
+          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}-${{ env.KERNEL_NAME_STRING }}-$(date +'%Y%d%m').zip"
 
           zip -r9 "$ZIP_NAME" * -x ".git/*"
           
