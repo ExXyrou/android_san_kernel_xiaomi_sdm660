@@ -82,7 +82,7 @@ on:
           - original
           - san-kernel
       TEST_BUILD:
-        description: '🧪 Test Build'
+        description: '⚠️ Test Build'
         required: true
         default: false
         type: boolean
