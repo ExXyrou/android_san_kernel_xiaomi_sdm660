@@ -119,10 +119,16 @@ jobs:
 
           CLEAN_INPUT=$(echo "${{ inputs.LOCALVERSION }}" | sed 's/^-//')
           
-          if [ -n "$CLEAN_INPUT" ]; then
-            FINAL_LOCAL="-${CLEAN_INPUT}"
+          if [ "${{ inputs.REMOVE_BRANCH_NAME }}" == "false" ]; then
+            BRANCH_TAG="-${{ inputs.KERNEL_BRANCH }}"
           else
-            FINAL_LOCAL=""
+            BRANCH_TAG=""
+          fi
+
+          if [ -n "$CLEAN_INPUT" ]; then
+            FINAL_LOCAL="${BRANCH_TAG}-${CLEAN_INPUT}"
+          else
+            FINAL_LOCAL="${BRANCH_TAG}"
           fi
           
           echo "KERNEL_NAME_STRING=$FINAL_LOCAL" >> $GITHUB_ENV
@@ -332,7 +338,7 @@ jobs:
 
           sed -i "s/^device\.name1=.*/device.name1=${{ inputs.DEVICE }}/" anykernel.sh
           
-          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}${{ env.KERNEL_NAME_STRING }}-$(date +'%Y%d%m').zip"
+          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}{{ env.KERNEL_NAME_STRING }}-$(date +'%Y%d%m').zip"
 
           zip -r9 "$ZIP_NAME" * -x ".git/*"
           
