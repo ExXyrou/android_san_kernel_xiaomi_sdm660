@@ -40,7 +40,7 @@ env:
   TELEGRAM_GROUP_ID: -1004324974450
 
 jobs:
-  edit-and-push:
+  optimize-defconfig:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
