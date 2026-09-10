@@ -4,7 +4,7 @@ This repository contains GitHub Actions workflows designed to automate the build
 
 ---
 
-## 🚀 1. Build Kernel (`build-kernel.yml`)
+## 🚀 1. Build Kernel (`build.yml`)
 
 The primary automation script used to compile the custom Android kernel, package it into an AnyKernel3 flashable ZIP, and dispatch status notifications straight to Telegram.
 
@@ -30,7 +30,7 @@ When triggering this workflow manually via the GitHub Actions tab, you can confi
 
 ---
 
-## ⚙️ 2. Optimize Defconfig (`optimize-defconfig.yml`)
+## ⚙️ 2. Optimize Defconfig (`optimize.yml`)
 
 A utility workflow designed to automatically fine-tune, clean up, and push configuration adjustments directly to specific branches of the kernel source repository.
 
