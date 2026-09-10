@@ -1,16 +1,7 @@
-name: 🛠️ Optimize Defconfigs All branch
+name: 🛠️ Optimize All Defconfigs
 
 on:
   workflow_dispatch:
-    inputs:
-      TELEGRAM_USERNAME:
-        description: '👤 Telegram Username'
-        required: true
-        type: string
-      GITHUB_PERSONAL_AKSES_TOKEN:
-        description: '🔑 GitHub Personal Access Token'
-        required: true
-        type: string
 
 env:
   KERNEL_DIR: kernel_source
@@ -39,7 +30,7 @@ jobs:
         with:
           repository: ExXyrou/android_san_kernel_xiaomi_sdm660
           ref: ${{ matrix.branch }}
-          token: ${{ inputs.GITHUB_PERSONAL_AKSES_TOKEN }}
+          token: ${{ secrets.GH_PAT }}
           path: ${{ env.KERNEL_DIR }}
           fetch-depth: 1
 
@@ -54,53 +45,88 @@ jobs:
 
           echo "Editing $DEFCONFIG_FILE..."
 
-          enable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --enable "$1"; }
+          enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
           disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
-          set_str() { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
-          set_val() { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
+          set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
+          set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
 
-          disable_config CONFIG_CPU_FREQ_GOV_POWERSAVE
-          disable_config CONFIG_CPU_FREQ_GOV_USERSPACE
-          disable_config CONFIG_CPU_FREQ_GOV_ONDEMAND
-          disable_config CONFIG_CPU_FREQ_GOV_CONSERVATIVE
+          enable_config CONFIG_SCHED_TUNE
+          enable_config CONFIG_STUNE_ASSIST
+          enable_config CONFIG_DYNAMIC_STUNE_BOOST
+          enable_config CONFIG_CPU_BOOST
+          enable_config CONFIG_DEFAULT_USE_ENERGY_AWARE
+          enable_config CONFIG_PELT_HALFLIFE_16
+          disable_config CONFIG_PELT_HALFLIFE_32
+          disable_config CONFIG_SCHED_WALT
 
-          set_str CONFIG_DEFAULT_IOSCHED "deadline"
-          enable_config CONFIG_DEFAULT_DEADLINE
-          disable_config CONFIG_DEFAULT_CFQ
+          enable_config CONFIG_IOSCHED_CFQ
+          enable_config CONFIG_DEFAULT_CFQ
+          disable_config CONFIG_DEFAULT_DEADLINE
+          set_str CONFIG_DEFAULT_IOSCHED "cfq"
 
+          set_str CONFIG_DEFAULT_TCP_CONG "westwood"
+          enable_config CONFIG_NET_SCH_FQ_CODEL
+          enable_config CONFIG_DEFAULT_FQ_CODEL
+          disable_config CONFIG_DEFAULT_PFIFO_FAST
+          set_str CONFIG_DEFAULT_NET_SCH "fq_codel"
+
+          enable_config CONFIG_ZRAM
+          disable_config CONFIG_ZRAM_WRITEBACK
+          enable_config CONFIG_CRYPTO_LZ4HC
+          enable_config CONFIG_CRYPTO_ZSTD
+          enable_config CONFIG_ZSMALLOC
+          enable_config CONFIG_PROCESS_RECLAIM
+          enable_config CONFIG_BALANCE_ANON_FILE_RECLAIM
+          enable_config CONFIG_ANDROID_LOW_MEMORY_KILLER
+          enable_config CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
+
+          enable_config CONFIG_CRYPTO_SHA1_ARM64_CE
+          enable_config CONFIG_CRYPTO_SHA2_ARM64_CE
+          enable_config CONFIG_CRYPTO_GHASH_ARM64_CE
+          enable_config CONFIG_CRYPTO_AES_ARM64_CE
+          enable_config CONFIG_CRYPTO_AES_ARM64_CE_CCM
+          enable_config CONFIG_CRYPTO_AES_ARM64_CE_BLK
+          enable_config CONFIG_CRYPTO_AES_ARM64_NEON_BLK
+          enable_config CONFIG_CRYPTO_CRC32_ARM64
+
+          set_str CONFIG_QCOM_ADRENO_DEFAULT_GOVERNOR "msm-adreno-tz"
+          enable_config CONFIG_QCOM_KGSL
+
+          disable_config CONFIG_SLUB_DEBUG
+          disable_config CONFIG_DEBUG_KERNEL
           disable_config CONFIG_FTRACE
+          disable_config CONFIG_FUNCTION_TRACER
           disable_config CONFIG_TRACING
-          disable_config CONFIG_RING_BUFFER
-          disable_config CONFIG_EVENT_TRACING
-          disable_config CONFIG_CONTEXT_SWITCH_TRACER
-          disable_config CONFIG_BLK_DEV_IO_TRACE
-          disable_config CONFIG_CPU_FREQ_SWITCH_PROFILER
-          disable_config CONFIG_SCHED_DEBUG
-          disable_config CONFIG_SCHED_INFO
-          disable_config CONFIG_SCHEDSTATS
+          disable_config CONFIG_KALLSYMS
+          disable_config CONFIG_KALLSYMS_ALL
+          disable_config CONFIG_DEBUG_FS
+          disable_config CONFIG_DETECT_HUNG_TASK
+          disable_config CONFIG_DEBUG_BUGVERBOSE
 
-          disable_config CONFIG_HZ_300
-          enable_config CONFIG_HZ_1000
-          set_val CONFIG_HZ 1000
+          enable_config CONFIG_WQ_POWER_EFFICIENT_DEFAULT
+          enable_config CONFIG_CPU_IDLE_GOV_MENU
 
-          set_val CONFIG_LOG_BUF_SHIFT 18
-          set_val CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS 128
-          set_val CONFIG_DEVFREQ_WAKE_BOOST_DURATION_MS 500
+          enable_config CONFIG_THERMAL_GOV_STEP_WISE
+          enable_config CONFIG_THERMAL_DEFAULT_GOV_STEP_WISE
+          enable_config CONFIG_CPU_THERMAL
+          enable_config CONFIG_LIMITS_MONITOR
+
+          echo "All optimization configs applied to $DEFCONFIG_FILE"
 
           echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
 
       - name: Commit Defconfig to Repository
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+          git config user.name "${{ secrets.GH_USERNAME }}"
+          git config user.email "${{ secrets.GH_EMAIL }}"
+
           if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
             echo "No changes detected in defconfig."
           else
             git add "${{ env.DEFCONFIG_REL_PATH }}"
-            git commit -m "config: Auto-update defconfig for ${{ matrix.device }} (${{ matrix.branch }})"
-            git remote set-url origin https://x-access-token:${{ inputs.GITHUB_PERSONAL_AKSES_TOKEN }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+            git commit -m "config: [Gaming Optimize] defconfig for ${{ matrix.device }} (${{ matrix.branch }})"
+            git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
             git push origin HEAD:${{ matrix.branch }}
             echo "Successfully updated to branch ${{ matrix.branch }}!"
           fi
@@ -108,8 +134,19 @@ jobs:
       - name: Send Telegram Notification (Success)
         if: success()
         run: |
-          MESSAGE=$(printf '📄 <b>Defconfig Successfully Updated</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ matrix.device }}" "${{ matrix.branch }}" "${{ inputs.TELEGRAM_USERNAME }}")
-          
+          MESSAGE=$(printf '📄 <b>Defconfig Successfully Optimized</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>\n🎮 <b>Mode:</b> <code>Gaming + Daily</code>' "${{ matrix.device }}" "${{ matrix.branch }}")
+
+          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
+            -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+            -F message_thread_id="345" \
+            -F parse_mode="HTML" \
+            -F text="$MESSAGE"
+
+      - name: Send Telegram Notification (Failure)
+        if: failure()
+        run: |
+          MESSAGE=$(printf '❌ <b>Defconfig Optimization Failed</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>' "${{ matrix.device }}" "${{ matrix.branch }}")
+
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
             -F message_thread_id="345" \
