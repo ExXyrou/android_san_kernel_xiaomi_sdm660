@@ -128,7 +128,7 @@ jobs:
             FINAL_LOCAL="${BRANCH_TAG}-${CLEAN_INPUT}"
           else
             FINAL_LOCAL="${BRANCH_TAG}"
-          fi
+          end
           
           echo "KERNEL_NAME_STRING=$FINAL_LOCAL" >> $GITHUB_ENV
           echo "Kernel string configured: $FINAL_LOCAL"
@@ -337,7 +337,7 @@ jobs:
 
           sed -i "s/^device\.name1=.*/device.name1=${{ inputs.DEVICE }}/" anykernel.sh
           
-          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}${{ env.KERNEL_NAME_STRING }}-$(date +'%Y%d%m').zip"
+          ZIP_NAME="${{ inputs.DEVICE }}-${{ env.KERNEL_VERSION }}{{ env.KERNEL_NAME_STRING }}-$(date +'%Y%d%m').zip"
 
           zip -r9 "$ZIP_NAME" * -x ".git/*"
           
