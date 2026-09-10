@@ -1,0 +1,117 @@
+name: 🛠️ Edit Defconfig
+
+on:
+  workflow_dispatch:
+    inputs:
+      TELEGRAM_USERNAME:
+        description: '👤 Telegram Username'
+        required: true
+        type: string
+      DEVICE:
+        description: '📱 Select Device'
+        required: true
+        default: 'lavender'
+        type: choice
+        options:
+          - lavender
+          - whyred
+      KERNEL_BRANCH:
+        description: '🌿 Select Kernel Branch'
+        required: true
+        default: 'PLTS'
+        type: choice
+        options:
+          - PLTS
+          - st74
+          - st78
+          - ksun-33024
+          - ksun-33068
+          - resukisu-34681
+          - resukisu-susfs
+
+env:
+  KERNEL_DIR: kernel_source
+  KERNEL_URL: https://github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
+  TELEGRAM_GROUP_ID: -1004324974450
+
+jobs:
+  edit-defconfig:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Initialize Workflow
+        run: echo "Editing Defconfig for ${{ inputs.DEVICE }}..."
+
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 -b "${{ inputs.KERNEL_BRANCH }}" "${{ env.KERNEL_URL }}" "${{ env.KERNEL_DIR }}"
+
+      - name: Edit Defconfig
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          if [ "${{ inputs.DEVICE }}" == "whyred" ]; then
+            DEFCONFIG_FILE="arch/arm64/configs/whyred_defconfig"
+          else
+            DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
+          fi
+
+          echo "Editing $DEFCONFIG_FILE..."
+
+          enable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --enable "$1"; }
+          disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
+          set_str() { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
+          set_val() { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
+
+          disable_config CONFIG_CPU_FREQ_GOV_POWERSAVE
+          disable_config CONFIG_CPU_FREQ_GOV_USERSPACE
+          disable_config CONFIG_CPU_FREQ_GOV_ONDEMAND
+          disable_config CONFIG_CPU_FREQ_GOV_CONSERVATIVE
+          
+          set_str CONFIG_DEFAULT_IOSCHED "deadline"
+          enable_config CONFIG_DEFAULT_DEADLINE
+          disable_config CONFIG_DEFAULT_CFQ
+
+          disable_config CONFIG_FTRACE
+          disable_config CONFIG_TRACING
+          disable_config CONFIG_RING_BUFFER
+          disable_config CONFIG_EVENT_TRACING
+          disable_config CONFIG_CONTEXT_SWITCH_TRACER
+          disable_config CONFIG_BLK_DEV_IO_TRACE
+          disable_config CONFIG_CPU_FREQ_SWITCH_PROFILER
+          disable_config CONFIG_SCHED_DEBUG
+          disable_config CONFIG_SCHED_INFO
+          disable_config CONFIG_SCHEDSTATS
+
+          disable_config CONFIG_HZ_300
+          enable_config CONFIG_HZ_1000
+          set_val CONFIG_HZ 1000
+
+          set_val CONFIG_LOG_BUF_SHIFT 18
+          set_val CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS 128
+          set_val CONFIG_DEVFREQ_WAKE_BOOST_DURATION_MS 500
+          
+          echo "DEFCONFIG_PATH=${{ env.KERNEL_DIR }}/$DEFCONFIG_FILE" >> $GITHUB_ENV
+
+      - name: Send Modified Defconfig to Telegram (Success)
+        if: success()
+        run: |
+          MESSAGE=$(printf '📄 <b>Defconfig Successfully Edited!</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ inputs.KERNEL_BRANCH }}" "${{ inputs.TELEGRAM_USERNAME }}")
+          
+          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
+            -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+            -F document="@${{ env.DEFCONFIG_PATH }}" \
+            -F parse_mode="HTML" \
+            -F caption="$MESSAGE"
+
+      - name: Send Telegram Notification (Failure)
+        if: failure()
+        run: |
+          MESSAGE=$(printf '❌ <b>FAILED TO EDIT DEFCONFIG</b>\n\n💥 <i>Something went wrong in the workflow.</i>\n\n<b>By:</b> %s' "${{ inputs.TELEGRAM_USERNAME }}")
+          
+          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
+            -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+            -F parse_mode="HTML" \
+            -F text="$MESSAGE"
