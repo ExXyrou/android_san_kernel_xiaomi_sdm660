@@ -122,5 +122,6 @@ jobs:
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+            -F message_thread_id="345"
             -F parse_mode="HTML" \
             -F text="$MESSAGE"
