@@ -1,4 +1,4 @@
-name: 🛠️ Edit Defconfig
+name: 🛠️ Optimize Defconfig
 
 on:
   workflow_dispatch:
@@ -28,6 +28,10 @@ on:
           - ksun-33068
           - resukisu-34681
           - resukisu-susfs
+      GITHUB_PERSONAL_AKSES_TOKEN:
+        description: '🔑 GitHub Personal Access Token'
+        required: true
+        type: string
 
 env:
   KERNEL_DIR: kernel_source
@@ -36,14 +40,14 @@ env:
   TELEGRAM_GROUP_ID: -1004324974450
 
 jobs:
-  edit-defconfig:
+  edit-and-push:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
 
     steps:
       - name: Initialize Workflow
-        run: echo "Editing Defconfig for ${{ inputs.DEVICE }}..."
+        run: echo "Starting defconfig update for ${{ inputs.DEVICE }}..."
 
       - name: Clone Kernel Source
         run: |
@@ -69,7 +73,7 @@ jobs:
           disable_config CONFIG_CPU_FREQ_GOV_USERSPACE
           disable_config CONFIG_CPU_FREQ_GOV_ONDEMAND
           disable_config CONFIG_CPU_FREQ_GOV_CONSERVATIVE
-          
+
           set_str CONFIG_DEFAULT_IOSCHED "deadline"
           enable_config CONFIG_DEFAULT_DEADLINE
           disable_config CONFIG_DEFAULT_CFQ
@@ -92,24 +96,29 @@ jobs:
           set_val CONFIG_LOG_BUF_SHIFT 18
           set_val CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS 128
           set_val CONFIG_DEVFREQ_WAKE_BOOST_DURATION_MS 500
-          
-          echo "DEFCONFIG_PATH=${{ env.KERNEL_DIR }}/$DEFCONFIG_FILE" >> $GITHUB_ENV
 
-      - name: Send Modified Defconfig to Telegram (Success)
+          echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
+
+      - name: Commit Defconfig to Repository
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
+            echo "No changes detected in defconfig."
+          else
+            git add "${{ env.DEFCONFIG_REL_PATH }}"
+            git commit -m "config: Auto-update defconfig for ${{ inputs.DEVICE }} (${{ inputs.KERNEL_BRANCH }})"
+            git remote set-url origin https://x-access-token:${{ inputs.GITHUB_PERSONAL_AKSES_TOKEN }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+            git push origin HEAD:${{ inputs.KERNEL_BRANCH }}
+            echo "Successfully updates to branch ${{ inputs.KERNEL_BRANCH }}!"
+          fi
+
+      - name: Send Telegram Notification (Success)
         if: success()
         run: |
-          MESSAGE=$(printf '📄 <b>Defconfig Successfully Edited!</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ inputs.KERNEL_BRANCH }}" "${{ inputs.TELEGRAM_USERNAME }}")
-          
-          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
-            -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
-            -F document="@${{ env.DEFCONFIG_PATH }}" \
-            -F parse_mode="HTML" \
-            -F caption="$MESSAGE"
-
-      - name: Send Telegram Notification (Failure)
-        if: failure()
-        run: |
-          MESSAGE=$(printf '❌ <b>FAILED TO EDIT DEFCONFIG</b>\n\n💥 <i>Something went wrong in the workflow.</i>\n\n<b>By:</b> %s' "${{ inputs.TELEGRAM_USERNAME }}")
+          MESSAGE=$(printf '📄 <b>Defconfig Successfully Updated</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ inputs.KERNEL_BRANCH }}" "${{ inputs.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
