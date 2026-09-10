@@ -38,6 +38,7 @@ env:
   KERNEL_URL: https://github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
   BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
   TELEGRAM_GROUP_ID: -1004324974450
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
 jobs:
   optimize-defconfig:
@@ -122,6 +123,6 @@ jobs:
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
-            -F message_thread_id="345"
+            -F message_thread_id="345" \
             -F parse_mode="HTML" \
             -F text="$MESSAGE"
