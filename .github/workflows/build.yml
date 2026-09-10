@@ -100,7 +100,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
@@ -157,7 +157,7 @@ jobs:
             bc bison libssl-dev libelf-dev build-essential python3 python3-pip curl git zip unzip wget ccache libncurses-dev rsync gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi xz-utils
 
       - name: Setup Compiler Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.ccache
           key: ccache-${{ inputs.DEVICE }}-${{ inputs.COMPILER }}-${{ github.run_id }}
@@ -181,7 +181,7 @@ jobs:
 
       - name: Setup Clang Toolchain Cache
         id: clang-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.CLANG_DIR }}
           key: clang-${{ inputs.COMPILER }}-v1-${{ hashFiles('.github/workflows/*.yml') }}
