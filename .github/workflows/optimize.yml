@@ -50,9 +50,14 @@ jobs:
       - name: Initialize Workflow
         run: echo "Starting defconfig update for ${{ inputs.DEVICE }}..."
 
-      - name: Clone Kernel Source
-        run: |
-          git clone --depth=1 -b "${{ inputs.KERNEL_BRANCH }}" "${{ env.KERNEL_URL }}" "${{ env.KERNEL_DIR }}"
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+        with:
+          repository: ExXyrou/android_san_kernel_xiaomi_sdm660
+          ref: ${{ inputs.KERNEL_BRANCH }}
+          token: ${{ inputs.GITHUB_PERSONAL_AKSES_TOKEN }}
+          path: ${{ env.KERNEL_DIR }}
+          fetch-depth: 1
 
       - name: Edit Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
@@ -113,7 +118,7 @@ jobs:
             git commit -m "config: Auto-update defconfig for ${{ inputs.DEVICE }} (${{ inputs.KERNEL_BRANCH }})"
             git remote set-url origin https://x-access-token:${{ inputs.GITHUB_PERSONAL_AKSES_TOKEN }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
             git push origin HEAD:${{ inputs.KERNEL_BRANCH }}
-            echo "Successfully updates to branch ${{ inputs.KERNEL_BRANCH }}!"
+            echo "Successfully updated to branch ${{ inputs.KERNEL_BRANCH }}!"
           fi
 
       - name: Send Telegram Notification (Success)
