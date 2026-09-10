@@ -26,7 +26,7 @@ on:
           - st78
           - ksun-33024
           - ksun-33068
-          - resukisu-34681
+          - resukisu
           - resukisu-susfs
       DISPLAY_BRANCH_NAME:
         description: '🏷️ Display Branch Name'
@@ -118,7 +118,7 @@ jobs:
           CLEAN_INPUT=$(echo "${{ inputs.LOCALVERSION }}" | sed 's/^-//')
           
           if [ "${{ inputs.DISPLAY_BRANCH_NAME }}" == "true" ]; then
-            if [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33068" ] || [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-34681" ]; then
+            if [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33068" ] || [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu" ]; then
               BRANCH_TAG="-st74"
             elif [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33024" ] || [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-susfs" ]; then
               BRANCH_TAG="-PLTS"
@@ -354,13 +354,13 @@ jobs:
           CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           
           if [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33024" ]; then
-            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/83?single">ksun</a>'
+            KSU_TEXT='<a href="https://t.me/exxyroukernel/348/365?single">ksun-33024</a>'
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33068" ]; then
-            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/85?single">ksun</a>'
-          elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-34681" ]; then
-            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/88">resukisu</a>'
+            KSU_TEXT='<a href="https://t.me/exxyroukernel/348/367?single">ksun-33068</a>'
+          elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu" ]; then
+            KSU_TEXT='<a href="https://t.me/exxyroukernel/348/369">resukisu</a>'
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-susfs" ]; then
-            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/89?single">resukisu</a>'
+            KSU_TEXT='<a href="https://t.me/exxyroukernel/348/370?single">resukisu-susfs</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "kowsu" ]; then
             KSU_TEXT='<a href="https://t.me/kowsu_build">kowsu</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "xxksu" ]; then
