@@ -18,13 +18,16 @@ on:
       KERNEL_BRANCH:
         description: '🌿 Select Kernel Branch'
         required: true
-        default: 'st74-ksun'
+        default: 'PLTS'
         type: choice
         options:
-          - st74-ksun
           - PLTS
           - st74
           - st78
+          - ksun-33024
+          - ksun-33068
+          - resukisu-34681
+          - resukisu-susfs
       DISPLAY_BRANCH_NAME:
         description: '🏷️ Display Branch Name'
         required: true
@@ -115,8 +118,10 @@ jobs:
           CLEAN_INPUT=$(echo "${{ inputs.LOCALVERSION }}" | sed 's/^-//')
           
           if [ "${{ inputs.DISPLAY_BRANCH_NAME }}" == "true" ]; then
-            if [ "${{ inputs.KERNEL_BRANCH }}" == "st74-ksun" ]; then
+            if [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33068" ] || [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-34681" ]; then
               BRANCH_TAG="-st74"
+            elif [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33024" ] || [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-susfs" ]; then
+              BRANCH_TAG="-PLTS"
             else
               BRANCH_TAG="-${{ inputs.KERNEL_BRANCH }}"
             fi
@@ -128,7 +133,7 @@ jobs:
             FINAL_LOCAL="${BRANCH_TAG}-${CLEAN_INPUT}"
           else
             FINAL_LOCAL="${BRANCH_TAG}"
-          end
+          fi
           
           echo "KERNEL_NAME_STRING=$FINAL_LOCAL" >> $GITHUB_ENV
           echo "Kernel string configured: $FINAL_LOCAL"
@@ -348,8 +353,14 @@ jobs:
         run: |
           CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           
-          if [ "${{ inputs.KERNEL_BRANCH }}" == "st74-ksun" ]; then
-            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/70?single">ksun</a>'
+          if [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33024" ]; then
+            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/83?single">ksun</a>'
+          elif [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33068" ]; then
+            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/85?single">ksun</a>'
+          elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-34681" ]; then
+            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/88">resukisu</a>'
+          elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-susfs" ]; then
+            KSU_TEXT='<a href="https://t.me/exxyrouprojectfile/89?single">resukisu</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "kowsu" ]; then
             KSU_TEXT='<a href="https://t.me/kowsu_build">kowsu</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "xxksu" ]; then
