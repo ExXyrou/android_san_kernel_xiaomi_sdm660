@@ -115,7 +115,7 @@ jobs:
 
           echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
 
-      - name: Commit Defconfig to Repository
+      - name: Commit & Push Defconfig (with retry + rebase)
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           git config user.name "${{ secrets.GH_USERNAME }}"
@@ -123,29 +123,57 @@ jobs:
 
           if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
             echo "No changes detected in defconfig."
-          else
-            git add "${{ env.DEFCONFIG_REL_PATH }}"
-            git commit -m "config: [Gaming Optimize] defconfig for ${{ matrix.device }} (${{ matrix.branch }})"
-            git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
-            git push origin HEAD:${{ matrix.branch }}
-            echo "Successfully updated to branch ${{ matrix.branch }}!"
+            exit 0
           fi
 
-      - name: Send Telegram Notification (Success)
-        if: success()
-        run: |
-          MESSAGE=$(printf '📄 <b>Defconfig Successfully Optimized</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>\n🎮 <b>Mode:</b> <code>Gaming + Daily</code>' "${{ matrix.device }}" "${{ matrix.branch }}")
+          git add "${{ env.DEFCONFIG_REL_PATH }}"
+          git commit -m "config: [Gaming Optimize] defconfig for ${{ matrix.device }} (${{ matrix.branch }})"
 
-          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
-            -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
-            -F message_thread_id="345" \
-            -F parse_mode="HTML" \
-            -F text="$MESSAGE"
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
 
-      - name: Send Telegram Notification (Failure)
-        if: failure()
+          MAX_RETRY=5
+          for i in $(seq 1 $MAX_RETRY); do
+            echo "🔁 Push attempt $i/$MAX_RETRY..."
+            if git push origin HEAD:${{ matrix.branch }}; then
+              echo "✅ Push success on attempt $i"
+              exit 0
+            fi
+
+            echo "⚠️ Push rejected, fetching & rebasing..."
+            git fetch origin ${{ matrix.branch }}
+            git rebase origin/${{ matrix.branch }} || {
+              echo "❌ Rebase conflict, aborting"
+              git rebase --abort
+              exit 1
+            }
+            sleep 5
+          done
+
+          echo "❌ Push failed after $MAX_RETRY attempts"
+          exit 1
+
+  notify:
+    needs: optimize-defconfig
+    if: always()
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Send Telegram Notification (Final Result)
         run: |
-          MESSAGE=$(printf '❌ <b>Defconfig Optimization Failed</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>' "${{ matrix.device }}" "${{ matrix.branch }}")
+          RESULT="${{ needs.optimize-defconfig.result }}"
+
+          if [ "$RESULT" == "success" ]; then
+            ICON="✅"
+          elif [ "$RESULT" == "failure" ]; then
+            ICON="❌"
+          elif [ "$RESULT" == "cancelled" ]; then
+            ICON="⚠️"
+          else
+            ICON="❓"
+          fi
+
+          MESSAGE=$(printf '%s <b>Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender, whyred</code>\n🌿 <b>Branch:</b> <code>PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, resukisu-susfs</code>' \
+            "$ICON")
 
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
