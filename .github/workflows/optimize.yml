@@ -1,4 +1,4 @@
-name: 🛠️ Optimize Defconfig
+name: 🛠️ Optimize Defconfigs All branch
 
 on:
   workflow_dispatch:
@@ -7,27 +7,6 @@ on:
         description: '👤 Telegram Username'
         required: true
         type: string
-      DEVICE:
-        description: '📱 Select Device'
-        required: true
-        default: 'lavender'
-        type: choice
-        options:
-          - lavender
-          - whyred
-      KERNEL_BRANCH:
-        description: '🌿 Select Kernel Branch'
-        required: true
-        default: 'PLTS'
-        type: choice
-        options:
-          - PLTS
-          - st74
-          - st78
-          - ksun-33024
-          - ksun-33068
-          - resukisu-34681
-          - resukisu-susfs
       GITHUB_PERSONAL_AKSES_TOKEN:
         description: '🔑 GitHub Personal Access Token'
         required: true
@@ -45,16 +24,21 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [lavender, whyred]
+        branch: [PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, resukisu-susfs]
 
     steps:
       - name: Initialize Workflow
-        run: echo "Starting defconfig update for ${{ inputs.DEVICE }}..."
+        run: echo "Starting defconfig update for ${{ matrix.device }} on branch ${{ matrix.branch }}..."
 
       - name: Checkout Repository
         uses: actions/checkout@v5
         with:
           repository: ExXyrou/android_san_kernel_xiaomi_sdm660
-          ref: ${{ inputs.KERNEL_BRANCH }}
+          ref: ${{ matrix.branch }}
           token: ${{ inputs.GITHUB_PERSONAL_AKSES_TOKEN }}
           path: ${{ env.KERNEL_DIR }}
           fetch-depth: 1
@@ -62,7 +46,7 @@ jobs:
       - name: Edit Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          if [ "${{ inputs.DEVICE }}" == "whyred" ]; then
+          if [ "${{ matrix.device }}" == "whyred" ]; then
             DEFCONFIG_FILE="arch/arm64/configs/whyred_defconfig"
           else
             DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
@@ -115,16 +99,16 @@ jobs:
             echo "No changes detected in defconfig."
           else
             git add "${{ env.DEFCONFIG_REL_PATH }}"
-            git commit -m "config: Auto-update defconfig for ${{ inputs.DEVICE }} (${{ inputs.KERNEL_BRANCH }})"
+            git commit -m "config: Auto-update defconfig for ${{ matrix.device }} (${{ matrix.branch }})"
             git remote set-url origin https://x-access-token:${{ inputs.GITHUB_PERSONAL_AKSES_TOKEN }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
-            git push origin HEAD:${{ inputs.KERNEL_BRANCH }}
-            echo "Successfully updated to branch ${{ inputs.KERNEL_BRANCH }}!"
+            git push origin HEAD:${{ matrix.branch }}
+            echo "Successfully updated to branch ${{ matrix.branch }}!"
           fi
 
       - name: Send Telegram Notification (Success)
         if: success()
         run: |
-          MESSAGE=$(printf '📄 <b>Defconfig Successfully Updated</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ inputs.KERNEL_BRANCH }}" "${{ inputs.TELEGRAM_USERNAME }}")
+          MESSAGE=$(printf '📄 <b>Defconfig Successfully Updated</b>\n\n📱 <b>Device:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ matrix.device }}" "${{ matrix.branch }}" "${{ inputs.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
