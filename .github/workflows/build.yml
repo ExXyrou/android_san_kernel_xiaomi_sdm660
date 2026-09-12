@@ -379,7 +379,7 @@ jobs:
             THREAD_ID="336"
           fi
 
-          MESSAGE=$(printf '📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⚡ <b>Kernel Type:</b> <code>%s</code>\n📷 <b>Build Type:</b> <code>%s</code>%s\n🦊 <b>KSU:</b> %s\n🛠️ <b>Clang Compiler:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$KERNEL_TYPE" "$CAM_TYPE" "$QTI_LINE" "$KSU_TEXT" "${{ env.CLANG_DISPLAY_VERSION }}" "${{ inputs.TELEGRAM_USERNAME }}")
+          MESSAGE=$(printf '📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⚙️ <b>Kernel Type:</b> <code>%s</code>\n📷 <b>Build Type:</b> <code>%s</code>%s\n🦊 <b>KSU:</b> %s\n🛠️ <b>Clang Compiler:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$KERNEL_TYPE" "$CAM_TYPE" "$QTI_LINE" "$KSU_TEXT" "${{ env.CLANG_DISPLAY_VERSION }}" "${{ inputs.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
