@@ -369,11 +369,21 @@ jobs:
             KSU_TEXT='<code>none</code>'
           fi
 
-          MESSAGE=$(printf '📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n📷 <b>Build Type:</b> <code>%s</code>\n📳 <b>QTI Haptics:</b> <code>%s</code>\n🦊 <b>KSU:</b> %s\n🛠️ <b>Clang Compiler:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$CAM_TYPE" "${{ inputs.QTI_HAPTICS }}" "$KSU_TEXT" "${{ env.CLANG_DISPLAY_VERSION }}" "${{ inputs.TELEGRAM_USERNAME }}")
+          if [ "${{ inputs.QTI_HAPTICS }}" == "true" ]; then
+            KERNEL_TYPE="EAS-QTI"
+            QTI_LINE=$'\n'$(printf '📳 <b>QTI Haptics:</b> <code>%s</code>' "${{ inputs.QTI_HAPTICS }}")
+            THREAD_ID="472"
+          else
+            KERNEL_TYPE="EAS"
+            QTI_LINE=""
+            THREAD_ID="336"
+          fi
+
+          MESSAGE=$(printf '📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⚡ <b>Kernel Type:</b> <code>%s</code>\n📷 <b>Build Type:</b> <code>%s</code>%s\n🦊 <b>KSU:</b> %s\n🛠️ <b>Clang Compiler:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$KERNEL_TYPE" "$CAM_TYPE" "$QTI_LINE" "$KSU_TEXT" "${{ env.CLANG_DISPLAY_VERSION }}" "${{ inputs.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
-            -F message_thread_id="336" \
+            -F message_thread_id="$THREAD_ID" \
             -F document="@${{ steps.img.outputs.zip_path }}" \
             -F parse_mode="HTML" \
             -F caption="$MESSAGE"
