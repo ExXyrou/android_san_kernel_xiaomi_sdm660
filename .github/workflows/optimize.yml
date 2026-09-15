@@ -1,4 +1,4 @@
-name: 🛠️ Optimize Defconfigs
+name: 🛠️ Optimize Defconfig
 
 on:
   workflow_dispatch:
