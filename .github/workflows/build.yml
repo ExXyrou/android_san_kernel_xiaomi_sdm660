@@ -3,10 +3,6 @@ name: 🛠️ Build Kernel
 on:
   workflow_dispatch:
     inputs:
-      TELEGRAM_USERNAME:
-        description: '👤 Telegram Username'
-        required: true
-        type: string
       DEVICE:
         description: '📱 Select Device'
         required: true
@@ -61,14 +57,6 @@ on:
           - none
           - kowsu
           - xxksu
-      FLASHABLE_TYPE:
-        description: '📦 Flashable Type'
-        required: true
-        default: 'original'
-        type: choice
-        options:
-          - original
-          - san-kernel
       COMPILER:
         description: '🛠️ Select Compiler'
         required: true
@@ -79,6 +67,7 @@ on:
           - proton
 
 env:
+  TELEGRAM_USERNAME: '@exxyrou'
   KERNEL_DIR: kernel_source
   CLANG_DIR: clang
   OUT_DIR: out
@@ -253,15 +242,10 @@ jobs:
             disable_config CONFIG_LOCALVERSION_AUTO
           fi
 
-          if [ "${{ inputs.FLASHABLE_TYPE }}" == "original" ]; then
-            enable_config CONFIG_KERNEL_GZIP && disable_config CONFIG_KERNEL_XZ
-            enable_config CONFIG_RD_GZIP && disable_config CONFIG_RD_XZ
-            sed -i 's/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.xz-dtb"/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.gz-dtb"/g; s/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.xz"/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.gz-dtb"/g' "$OUT_DIR/.config"
-          else
-            disable_config CONFIG_KERNEL_GZIP && enable_config CONFIG_KERNEL_XZ
-            enable_config CONFIG_RD_XZ
-            sed -i 's/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.gz-dtb"/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.xz"/g' "$OUT_DIR/.config"
-          fi
+          # Force san-kernel configuration (Xz compressed image)
+          disable_config CONFIG_KERNEL_GZIP && enable_config CONFIG_KERNEL_XZ
+          enable_config CONFIG_RD_XZ
+          sed -i 's/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.gz-dtb"/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.xz"/g' "$OUT_DIR/.config"
 
           [ "${{ inputs.QTI_HAPTICS }}" == "true" ] && enable_config CONFIG_INPUT_QTI_HAPTICS
           [ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && enable_config CONFIG_XIAOMI_NEW_CAMERA_BLOBS
@@ -305,22 +289,12 @@ jobs:
         run: |
           IMAGE=$(find "$PWD/$OUT_DIR/arch/arm64/boot" -type f \( -name "Image.gz-dtb" -o -name "Image.gz" -o -name "Image.xz" -o -name "Image" \) | head -n1)
           
-          if [ "${{ inputs.FLASHABLE_TYPE }}" == "original" ]; then
-            BRANCH_NAME="original"
-            OUTPUT_NAME="Image.gz-dtb"
-            if [[ "$IMAGE" == *Image.gz ]]; then
-              cp "$IMAGE" "$GITHUB_WORKSPACE/$OUTPUT_NAME"
-            else
-              gzip -f -k -c "$IMAGE" > "$GITHUB_WORKSPACE/$OUTPUT_NAME"
-            fi
+          BRANCH_NAME="san-kernel"
+          OUTPUT_NAME="Image.xz"
+          if [[ "$IMAGE" == *.xz ]]; then
+            cp "$IMAGE" "$GITHUB_WORKSPACE/$OUTPUT_NAME"
           else
-            BRANCH_NAME="san-kernel"
-            OUTPUT_NAME="Image.xz"
-            if [[ "$IMAGE" == *.xz ]]; then
-              cp "$IMAGE" "$GITHUB_WORKSPACE/$OUTPUT_NAME"
-            else
-              xz -f -k -c "$IMAGE" > "$GITHUB_WORKSPACE/$OUTPUT_NAME"
-            fi
+            xz -f -k -c "$IMAGE" > "$GITHUB_WORKSPACE/$OUTPUT_NAME"
           fi
           
           cd "$GITHUB_WORKSPACE"
@@ -329,11 +303,7 @@ jobs:
           
           cd AnyKernel3
           if [ -f anykernel.sh ]; then
-            if [ "${{ inputs.FLASHABLE_TYPE }}" == "san-kernel" ]; then
-              sed -i 's/Image\.gz-dtb/Image.xz/g; s/Image\.gz/Image.xz/g; s/Image$/Image.xz/g' anykernel.sh
-            else
-              sed -i 's/Image\.xz/Image.gz-dtb/g; s/Image\.gz/Image.gz-dtb/g; s/Image$/Image.gz-dtb/g' anykernel.sh
-            fi
+            sed -i 's/Image\.gz-dtb/Image.xz/g; s/Image\.gz/Image.xz/g; s/Image$/Image.xz/g' anykernel.sh
             grep -q "kernel_name=" anykernel.sh && sed -i "s/^kernel_name=.*/kernel_name=\"$OUTPUT_NAME\"/" anykernel.sh
           fi
           
@@ -379,7 +349,7 @@ jobs:
             THREAD_ID="336"
           fi
 
-          MESSAGE=$(printf '📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⚙️ <b>Kernel Type:</b> <code>%s</code>\n📷 <b>Build Type:</b> <code>%s</code>%s\n🦊 <b>KSU:</b> %s\n🛠️ <b>Clang Compiler:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$KERNEL_TYPE" "$CAM_TYPE" "$QTI_LINE" "$KSU_TEXT" "${{ env.CLANG_DISPLAY_VERSION }}" "${{ inputs.TELEGRAM_USERNAME }}")
+          MESSAGE=$(printf '📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⚙️ <b>Kernel Type:</b> <code>%s</code>\n📷 <b>Build Type:</b> <code>%s</code>%s\n🦊 <b>KSU:</b> %s\n🛠️ <b>Clang Compiler:</b> <code>%s</code>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$KERNEL_TYPE" "$CAM_TYPE" "$QTI_LINE" "$KSU_TEXT" "${{ env.CLANG_DISPLAY_VERSION }}" "${{ env.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
@@ -391,7 +361,7 @@ jobs:
       - name: Send Telegram Notification (Failure)
         if: failure()
         run: |
-          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n💥 <i>Check build.log for details.</i>\n\n<b>By:</b> %s' "${{ inputs.TELEGRAM_USERNAME }}")
+          MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n💥 <i>Check build.log for details.</i>\n\n<b>By:</b> %s' "${{ env.TELEGRAM_USERNAME }}")
           
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
