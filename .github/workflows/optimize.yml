@@ -50,66 +50,35 @@ jobs:
           set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
           set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
 
-          enable_config CONFIG_SCHED_TUNE
-          enable_config CONFIG_STUNE_ASSIST
-          enable_config CONFIG_DYNAMIC_STUNE_BOOST
-          enable_config CONFIG_CPU_BOOST
-          enable_config CONFIG_DEFAULT_USE_ENERGY_AWARE
-          enable_config CONFIG_PELT_HALFLIFE_16
-          disable_config CONFIG_PELT_HALFLIFE_32
-          disable_config CONFIG_SCHED_WALT
+          # ==========================================
+          # 1. FIX SLEEP DEATH & EAS SCHEDULING
+          # ==========================================
+          enable_config CONFIG_SCHED_WALT
+          disable_config CONFIG_PANIC_ON_OOPS
+          disable_config CONFIG_QCOM_FORCE_WDOG_BITE_ON_PANIC
+          disable_config CONFIG_BUG_ON_DATA_CORRUPTION
 
-          enable_config CONFIG_IOSCHED_CFQ
-          enable_config CONFIG_DEFAULT_CFQ
-          disable_config CONFIG_DEFAULT_DEADLINE
-          set_str CONFIG_DEFAULT_IOSCHED "cfq"
-
-          set_str CONFIG_DEFAULT_TCP_CONG "westwood"
-          enable_config CONFIG_NET_SCH_FQ_CODEL
-          enable_config CONFIG_DEFAULT_FQ_CODEL
-          disable_config CONFIG_DEFAULT_PFIFO_FAST
-          set_str CONFIG_DEFAULT_NET_SCH "fq_codel"
-
-          enable_config CONFIG_ZRAM
-          disable_config CONFIG_ZRAM_WRITEBACK
-          enable_config CONFIG_CRYPTO_LZ4HC
-          enable_config CONFIG_CRYPTO_ZSTD
-          enable_config CONFIG_ZSMALLOC
-          enable_config CONFIG_PROCESS_RECLAIM
-          enable_config CONFIG_BALANCE_ANON_FILE_RECLAIM
-          enable_config CONFIG_ANDROID_LOW_MEMORY_KILLER
-          enable_config CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
-
-          enable_config CONFIG_CRYPTO_SHA1_ARM64_CE
-          enable_config CONFIG_CRYPTO_SHA2_ARM64_CE
-          enable_config CONFIG_CRYPTO_GHASH_ARM64_CE
-          enable_config CONFIG_CRYPTO_AES_ARM64_CE
-          enable_config CONFIG_CRYPTO_AES_ARM64_CE_CCM
-          enable_config CONFIG_CRYPTO_AES_ARM64_CE_BLK
-          enable_config CONFIG_CRYPTO_AES_ARM64_NEON_BLK
-          enable_config CONFIG_CRYPTO_CRC32_ARM64
-
-          set_str CONFIG_QCOM_ADRENO_DEFAULT_GOVERNOR "msm-adreno-tz"
-          enable_config CONFIG_QCOM_KGSL
-
-          disable_config CONFIG_SLUB_DEBUG
-          disable_config CONFIG_DEBUG_KERNEL
-          disable_config CONFIG_FTRACE
-          disable_config CONFIG_FUNCTION_TRACER
-          disable_config CONFIG_TRACING
-          disable_config CONFIG_KALLSYMS
-          disable_config CONFIG_KALLSYMS_ALL
+          # ==========================================
+          # 2. GAMING & NETWORK OPTIMIZATION
+          # ==========================================
+          enable_config CONFIG_TCP_CONG_BBR
+          set_str CONFIG_DEFAULT_TCP_CONG "bbr"
+          enable_config CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
+          disable_config CONFIG_CC_OPTIMIZE_FOR_SIZE
+          
+          # ==========================================
+          # 3. OVERHEAD & DEBUGGING REDUCTION (BATTERY SAVER)
+          # ==========================================
           disable_config CONFIG_DEBUG_FS
-          disable_config CONFIG_DETECT_HUNG_TASK
-          disable_config CONFIG_DEBUG_BUGVERBOSE
-
-          enable_config CONFIG_WQ_POWER_EFFICIENT_DEFAULT
-          enable_config CONFIG_CPU_IDLE_GOV_MENU
-
-          enable_config CONFIG_THERMAL_GOV_STEP_WISE
-          enable_config CONFIG_THERMAL_DEFAULT_GOV_STEP_WISE
-          enable_config CONFIG_CPU_THERMAL
-          enable_config CONFIG_LIMITS_MONITOR
+          disable_config CONFIG_GENERIC_TRACER
+          disable_config CONFIG_TRACING
+          disable_config CONFIG_FTRACE
+          disable_config CONFIG_DEBUG_KMEMLEAK
+          disable_config CONFIG_DEBUG_SECTION_MISMATCH
+          disable_config CONFIG_MAGIC_SYSRQ
+          disable_config CONFIG_SLUB_DEBUG
+          disable_config CONFIG_PM_DEBUG
+          disable_config CONFIG_SCHED_DEBUG
 
           echo "All optimization configs applied to $DEFCONFIG_FILE"
 
@@ -127,7 +96,7 @@ jobs:
           fi
 
           git add "${{ env.DEFCONFIG_REL_PATH }}"
-          git commit -m "config: [Gaming Optimize] defconfig for ${{ matrix.device }} (${{ matrix.branch }})"
+          git commit -m "config: [Gaming & Stability Optimize] defconfig for ${{ matrix.device }} (${{ matrix.branch }})"
 
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
 
