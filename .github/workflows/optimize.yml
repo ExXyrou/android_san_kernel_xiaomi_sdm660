@@ -1,4 +1,4 @@
-name: 🛠️ Optimize All Defconfigs
+name: 🛠️ Optimize Defconfigs
 
 on:
   workflow_dispatch:
@@ -50,35 +50,7 @@ jobs:
           set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
           set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
 
-          # ==========================================
-          # 1. FIX SLEEP DEATH & EAS SCHEDULING
-          # ==========================================
-          enable_config CONFIG_SCHED_WALT
-          disable_config CONFIG_PANIC_ON_OOPS
-          disable_config CONFIG_QCOM_FORCE_WDOG_BITE_ON_PANIC
-          disable_config CONFIG_BUG_ON_DATA_CORRUPTION
-
-          # ==========================================
-          # 2. GAMING & NETWORK OPTIMIZATION
-          # ==========================================
-          enable_config CONFIG_TCP_CONG_BBR
-          set_str CONFIG_DEFAULT_TCP_CONG "bbr"
-          enable_config CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
-          disable_config CONFIG_CC_OPTIMIZE_FOR_SIZE
-          
-          # ==========================================
-          # 3. OVERHEAD & DEBUGGING REDUCTION (BATTERY SAVER)
-          # ==========================================
-          disable_config CONFIG_DEBUG_FS
-          disable_config CONFIG_GENERIC_TRACER
-          disable_config CONFIG_TRACING
-          disable_config CONFIG_FTRACE
-          disable_config CONFIG_DEBUG_KMEMLEAK
-          disable_config CONFIG_DEBUG_SECTION_MISMATCH
-          disable_config CONFIG_MAGIC_SYSRQ
-          disable_config CONFIG_SLUB_DEBUG
-          disable_config CONFIG_PM_DEBUG
-          disable_config CONFIG_SCHED_DEBUG
+          # List Tweak Config
 
           echo "All optimization configs applied to $DEFCONFIG_FILE"
 
@@ -96,7 +68,7 @@ jobs:
           fi
 
           git add "${{ env.DEFCONFIG_REL_PATH }}"
-          git commit -m "config: [Gaming & Stability Optimize] defconfig for ${{ matrix.device }} (${{ matrix.branch }})"
+          git commit -m "config: [Optimize] defconfig for ${{ matrix.device }} (${{ matrix.branch }})"
 
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
 
@@ -141,7 +113,7 @@ jobs:
             ICON="❓"
           fi
 
-          MESSAGE=$(printf '%s <b>Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender, whyred</code>\n🌿 <b>Branch:</b> <code>PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, resukisu-susfs</code>' \
+          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender, whyred</code>\n🌿 <b>Branch:</b> <code>PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, resukisu-susfs</code>' \
             "$ICON")
 
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
