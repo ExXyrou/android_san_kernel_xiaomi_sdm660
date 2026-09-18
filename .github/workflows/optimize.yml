@@ -2,16 +2,10 @@ name: 🛠️ Optimize Defconfig
 
 on:
   workflow_dispatch:
-    inputs:
-      reason:
-        description: 'Reason for running optimization'
-        required: false
-        default: 'Universal A10-A13 + Storage/RAM fix'
 
 env:
   KERNEL_DIR: kernel_source
-  KERNEL_URL: https://github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
-  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAjK1I4cnIKYiI
+  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
   TELEGRAM_GROUP_ID: -1004324974450
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
@@ -28,81 +22,17 @@ jobs:
 
     steps:
       - name: Initialize Workflow
-        run: |
-          echo "=========================================="
-          echo "Device : ${{ matrix.device }}"
-          echo "Branch : ${{ matrix.branch }}"
-          echo "Reason : ${{ inputs.reason }}"
-          echo "=========================================="
+        run: echo "Starting defconfig update for ${{ matrix.device }} on branch ${{ matrix.branch }}..."
 
-      # ────────────────────────────────────────────────────────────────
-      # FIX #1: submodules: false → skip init submodule KernelSU yang rusak
-      # ────────────────────────────────────────────────────────────────
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           repository: ExXyrou/android_san_kernel_xiaomi_sdm660
           ref: ${{ matrix.branch }}
           token: ${{ secrets.GH_PAT }}
           path: ${{ env.KERNEL_DIR }}
-          fetch-depth: 1
+          fetch-depth: 0
           submodules: false
-          persist-credentials: true
-
-      # ────────────────────────────────────────────────────────────────
-      # FIX #2: Bersihkan referensi submodule rusak SEBELUM edit
-      # ────────────────────────────────────────────────────────────────
-      - name: Clean Broken Submodule Reference
-        working-directory: ${{ env.KERNEL_DIR }}
-        run: |
-          echo ">>> Cleaning broken submodule references..."
-
-          # Safe directory untuk git global
-          git config --global --add safe.directory "$(pwd)" || true
-          git config --global --add safe.directory '*' || true
-
-          # Cek apakah ada .gitmodules
-          if [ -f .gitmodules ]; then
-            echo ">>> .gitmodules found, checking entries..."
-            cat .gitmodules || true
-
-            # Kalau entry KernelSU tidak punya url, hapus
-            if ! grep -q 'url' .gitmodules 2>/dev/null || \
-               ! grep -A2 'KernelSU' .gitmodules 2>/dev/null | grep -q 'url'; then
-              echo "⚠️ Broken .gitmodules detected — removing KernelSU entry"
-              git config -f .gitmodules --remove-section "submodule.KernelSU" 2>/dev/null || true
-              git config -f .gitmodules --remove-section "submodule.KernelSU-Next" 2>/dev/null || true
-            fi
-          else
-            echo ">>> No .gitmodules found (or empty)"
-          fi
-
-          # Hapus entri submodule dari index Git
-          for sub in KernelSU KernelSU-Next KernelSU-Next-2; do
-            if git ls-files --stage | grep -q "160000.*${sub}"; then
-              echo "⚠️ Removing stale submodule entry: ${sub}"
-              git rm --cached "${sub}" 2>/dev/null || \
-                git rm --cached -r "${sub}" 2>/dev/null || true
-            fi
-          done
-
-          # Deinit semua submodule (kalau ada)
-          git submodule deinit -f --all 2>/dev/null || true
-
-          # Hapus folder .git/modules/* kalau ada (stale cache)
-          rm -rf .git/modules/KernelSU 2>/dev/null || true
-          rm -rf .git/modules/KernelSU-Next 2>/dev/null || true
-
-          echo "✅ Submodule cleanup done"
-
-          # Verifikasi
-          echo ""
-          echo ">>> Final .gitmodules check:"
-          if [ -f .gitmodules ]; then
-            cat .gitmodules
-          else
-            echo "  (no .gitmodules file)"
-          fi
 
       - name: Edit Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
@@ -113,452 +43,108 @@ jobs:
             DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
           fi
 
-          if [ ! -f "$DEFCONFIG_FILE" ]; then
-            echo "❌ Defconfig not found: $DEFCONFIG_FILE"
-            exit 1
-          fi
-
-          echo "📝 Editing $DEFCONFIG_FILE..."
+          echo "Editing $DEFCONFIG_FILE..."
 
           enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
           disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
           set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
           set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
 
-          # ══════════════════════════════════════════════════════════════
-          # SECTION 1 — FIX BOOT → FASTBOOT AFTER BOOTANIMATION
-          # ══════════════════════════════════════════════════════════════
-          echo ">>> [1/5] Boot-to-Fastboot FIX (A10 → A13)"
-
-          enable_config CONFIG_QCOM_WATCHDOG_V2
-          enable_config CONFIG_MSM_AVTIMER
-          enable_config CONFIG_MSM_EVENT_TIMER
-
-          disable_config CONFIG_PANIC_ON_OOPS
-          set_val CONFIG_PANIC_ON_OOPS_VALUE 0
-          set_val CONFIG_PANIC_TIMEOUT 0
-          disable_config CONFIG_PANIC_ON_SCHED_BUG
-          disable_config CONFIG_PANIC_ON_RT_THROTTLING
-          disable_config CONFIG_QCOM_FORCE_WDOG_BITE_ON_PANIC
-
-          enable_config CONFIG_PSTORE
-          enable_config CONFIG_PSTORE_CONSOLE
-          enable_config CONFIG_PSTORE_PMSG
-          enable_config CONFIG_PSTORE_RAM
-          enable_config CONFIG_PSTORE_LAST_KMSG
-
-          enable_config CONFIG_EXT4_FS
-          enable_config CONFIG_EXT4_USE_FOR_EXT2
-          enable_config CONFIG_EXT4_FS_SECURITY
-          enable_config CONFIG_EXT4_ENCRYPTION
-          enable_config CONFIG_EXT4_FS_ENCRYPTION
-          enable_config CONFIG_EXT4_FS_ICE_ENCRYPTION
-          enable_config CONFIG_F2FS_FS
-          enable_config CONFIG_F2FS_STAT_FS
-          enable_config CONFIG_F2FS_FS_XATTR
-          enable_config CONFIG_F2FS_FS_POSIX_ACL
-          enable_config CONFIG_F2FS_FS_SECURITY
-          enable_config CONFIG_F2FS_FS_ENCRYPTION
-
-          enable_config CONFIG_FS_ENCRYPTION
-          enable_config CONFIG_FS_POSIX_ACL
-          enable_config CONFIG_ENCRYPTED_KEYS
-          enable_config CONFIG_PFK
-          enable_config CONFIG_CRYPTO_AES
-          enable_config CONFIG_CRYPTO_CBC
-          enable_config CONFIG_CRYPTO_XTS
-          enable_config CONFIG_CRYPTO_CTS
-          enable_config CONFIG_CRYPTO_ECB
-          enable_config CONFIG_CRYPTO_CTR
-          enable_config CONFIG_CRYPTO_SHA256
-          enable_config CONFIG_CRYPTO_SHA512
-          enable_config CONFIG_CRYPTO_HMAC
-          enable_config CONFIG_CRYPTO_CMAC
-          enable_config CONFIG_CRYPTO_AES_ARM64_CE
-          enable_config CONFIG_CRYPTO_AES_ARM64_CE_BLK
-          enable_config CONFIG_CRYPTO_AES_ARM64_NEON_BLK
-          enable_config CONFIG_CRYPTO_SHA2_ARM64_CE
-
-          enable_config CONFIG_DM_CRYPT
-          enable_config CONFIG_DM_VERITY
-          enable_config CONFIG_DM_VERITY_FEC
-          enable_config CONFIG_DM_ANDROID_VERITY
-          enable_config CONFIG_DM_BUFIO
-          enable_config CONFIG_BLK_DEV_DM
-          enable_config CONFIG_BLK_DEV_DM_BUILTIN
-          enable_config CONFIG_QCOM_EARLY_DOMAIN
-          enable_config CONFIG_QCOM_EARLY_RANDOM
-
-          enable_config CONFIG_ANDROID
-          enable_config CONFIG_ANDROID_BINDER_IPC
-          set_str CONFIG_ANDROID_BINDER_DEVICES "binder,hwbinder,vndbinder"
-
-          enable_config CONFIG_ION
-          enable_config CONFIG_ION_MSM
-          enable_config CONFIG_DMA_SHARED_BUFFER
-          enable_config CONFIG_SYNC
-          enable_config CONFIG_SW_SYNC
-          enable_config CONFIG_ONESHOT_SYNC
-
-          enable_config CONFIG_SECURITY
-          enable_config CONFIG_SECURITY_SELINUX
-          enable_config CONFIG_SECURITY_SELINUX_DEVELOP
-          enable_config CONFIG_SECURITY_SELINUX_AVC_STATS
-          enable_config CONFIG_SECURITY_NETWORK
-          enable_config CONFIG_LSM_MMAP_MIN_ADDR
-          set_val CONFIG_LSM_MMAP_MIN_ADDR 32768
-          enable_config CONFIG_DEFAULT_SECURITY_SELINUX
-          set_str CONFIG_DEFAULT_SECURITY "selinux"
-          enable_config CONFIG_AUDIT
-
-          enable_config CONFIG_BLK_DEV_INITRD
-          enable_config CONFIG_RD_GZIP
-          enable_config CONFIG_RD_LZ4
-          enable_config CONFIG_RD_LZO
-
-          enable_config CONFIG_CONFIGFS_FS
-          enable_config CONFIG_TMPFS
-          enable_config CONFIG_TMPFS_XATTR
-          enable_config CONFIG_TMPFS_POSIX_ACL
-          enable_config CONFIG_PROC_FS
-          enable_config CONFIG_SYSFS
-          enable_config CONFIG_DEVTMPFS
-          enable_config CONFIG_OVERLAY_FS
-
-          # ══════════════════════════════════════════════════════════════
-          # SECTION 2 — UNIVERSAL RAM 3/32 – 6/64
-          # ══════════════════════════════════════════════════════════════
-          echo ">>> [2/5] Universal RAM/Storage"
-
-          enable_config CONFIG_ZRAM
-          enable_config CONFIG_CRYPTO_LZ4
-          enable_config CONFIG_CRYPTO_LZ4HC
-          enable_config CONFIG_CRYPTO_LZO
-          enable_config CONFIG_CRYPTO_ZSTD
-          enable_config CONFIG_LZ4_COMPRESS
-          enable_config CONFIG_LZ4_DECOMPRESS
-          enable_config CONFIG_LZO_COMPRESS
-          enable_config CONFIG_LZO_DECOMPRESS
-          disable_config CONFIG_ZRAM_WRITEBACK
-
-          enable_config CONFIG_SWAP
-          enable_config CONFIG_ZSMALLOC
-          enable_config CONFIG_BALANCE_ANON_FILE_RECLAIM
-          enable_config CONFIG_PROCESS_RECLAIM
-          set_val CONFIG_VMAP_LAZY_PURGING_FACTOR 32
-
-          enable_config CONFIG_CMA
-          enable_config CONFIG_DMA_CMA
-          set_val CONFIG_CMA_SIZE_MBYTES 16
-          enable_config CONFIG_CMA_SIZE_SEL_MBYTES
-          disable_config CONFIG_CMA_SIZE_SEL_PERCENTAGE
-          set_val CONFIG_CMA_ALIGNMENT 8
-
-          enable_config CONFIG_ANDROID_SIMPLE_LMK
-          set_val CONFIG_ANDROID_SIMPLE_LMK_MINFREE 100
-
-          enable_config CONFIG_CGROUPS
-          enable_config CONFIG_MEMCG
-          enable_config CONFIG_MEMCG_SWAP
-          enable_config CONFIG_MEMCG_SWAP_ENABLED
-          enable_config CONFIG_CGROUP_FREEZER
-          enable_config CONFIG_CGROUP_CPUACCT
-          enable_config CONFIG_CGROUP_SCHED
-          enable_config CONFIG_CPUSETS
-
-          enable_config CONFIG_MMC
-          enable_config CONFIG_MMC_BLOCK
-          enable_config CONFIG_MMC_SDHCI
-          enable_config CONFIG_MMC_SDHCI_PLTFM
-          enable_config CONFIG_MMC_SDHCI_MSM
-          enable_config CONFIG_MMC_CQ_HCI
-          enable_config CONFIG_SDCARD_FS
-          enable_config CONFIG_EXFAT_FS
-          enable_config CONFIG_NTFS_FS
-          enable_config CONFIG_NTFS_RW
-          enable_config CONFIG_MSDOS_FS
-          enable_config CONFIG_VFAT_FS
-
-          enable_config CONFIG_IOSCHED_DEADLINE
-          enable_config CONFIG_IOSCHED_CFQ
-          enable_config CONFIG_IOSCHED_BFQ
-          enable_config CONFIG_IOSCHED_NOOP
-          set_str CONFIG_DEFAULT_IOSCHED "deadline"
-          enable_config CONFIG_DEFAULT_DEADLINE
-          disable_config CONFIG_DEFAULT_CFQ
-          disable_config CONFIG_DEFAULT_BFQ
-
-          # ══════════════════════════════════════════════════════════════
-          # SECTION 3 — EAS OPTIMIZATION
-          # ══════════════════════════════════════════════════════════════
-          echo ">>> [3/5] EAS / SDM660 Optimization"
-
-          enable_config CONFIG_SCHED_TUNE
-          enable_config CONFIG_DEFAULT_USE_ENERGY_AWARE
-          enable_config CONFIG_SCHED_WALT
+          # ==========================================
+          # 1. OPTIMALISASI CPU & GOVERNOR (EAS & Gaming)
+          # ==========================================
+          # Mengaktifkan Schedutil (default) & Performance
           enable_config CONFIG_CPU_FREQ_GOV_SCHEDUTIL
           enable_config CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
-          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE
-          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_POWERSAVE
-          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND
-          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
-          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
-          enable_config CONFIG_CPU_BOOST
-          enable_config CONFIG_DYNAMIC_STUNE_BOOST
-          enable_config CONFIG_STUNE_ASSIST
-          enable_config CONFIG_CPUSETS_ASSIST
-
-          disable_config CONFIG_PELT_HALFLIFE_32
-          disable_config CONFIG_PELT_HALFLIFE_12
-          disable_config CONFIG_PELT_HALFLIFE_8
-          enable_config CONFIG_PELT_HALFLIFE_16
-
-          disable_config CONFIG_HZ_100
-          disable_config CONFIG_HZ_250
-          disable_config CONFIG_HZ_1000
-          enable_config CONFIG_HZ_300
-          set_val CONFIG_HZ 300
-
-          enable_config CONFIG_PREEMPT
-          enable_config CONFIG_PREEMPT_COUNT
-          enable_config CONFIG_NO_HZ
-          enable_config CONFIG_NO_HZ_IDLE
-          enable_config CONFIG_HIGH_RES_TIMERS
-          enable_config CONFIG_RCU_FAST_NO_HZ
-          enable_config CONFIG_SCHED_HRTICK
-
-          enable_config CONFIG_ADRENO_IDLER
-          set_str CONFIG_QCOM_ADRENO_DEFAULT_GOVERNOR "msm-adreno-tz"
-          enable_config CONFIG_DEVFREQ_BOOST
-          set_val CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS 128
-          set_val CONFIG_DEVFREQ_WAKE_BOOST_DURATION_MS 500
-          enable_config CONFIG_QCOM_KGSL
-          enable_config CONFIG_QCOM_KGSL_IOMMU
-
-          enable_config CONFIG_THERMAL
-          enable_config CONFIG_THERMAL_WRITABLE_TRIPS
-          enable_config CONFIG_THERMAL_OF
-          enable_config CONFIG_CPU_THERMAL
-          enable_config CONFIG_LIMITS_MONITOR
-          enable_config CONFIG_LIMITS_LITE_HW
-          enable_config CONFIG_THERMAL_MONITOR
-          enable_config CONFIG_THERMAL_TSENS8974
-          enable_config CONFIG_THERMAL_QPNP
-          enable_config CONFIG_THERMAL_QPNP_ADC_TM
-          enable_config CONFIG_THERMAL_SWITCH
-          enable_config CONFIG_QCOM_THERMAL_LIMITS_DCVS
-          enable_config CONFIG_MSM_BCL_CTL
-          enable_config CONFIG_MSM_BCL_PERIPHERAL_CTL
-
-          # ══════════════════════════════════════════════════════════════
-          # SECTION 4 — ANDROID 10 → 13 COMPATIBILITY
-          # ══════════════════════════════════════════════════════════════
-          echo ">>> [4/5] Android 10-13 Compatibility"
-
-          enable_config CONFIG_NAMESPACES
-          enable_config CONFIG_UTS_NS
-          enable_config CONFIG_NET_NS
-          enable_config CONFIG_USER_NS
-          enable_config CONFIG_PID_NS
-
-          enable_config CONFIG_BPF
-          enable_config CONFIG_BPF_SYSCALL
-          enable_config CONFIG_BPF_JIT
-          enable_config CONFIG_BPF_JIT_ALWAYS_ON
-          enable_config CONFIG_CGROUP_BPF
-          enable_config CONFIG_NETFILTER_XT_MATCH_BPF
-          enable_config CONFIG_NET_CLS_BPF
-          enable_config CONFIG_NET_ACT_BPF
-
-          enable_config CONFIG_SECCOMP
-          enable_config CONFIG_SECCOMP_FILTER
-          enable_config CONFIG_HAVE_ARCH_SECCOMP_FILTER
-
-          enable_config CONFIG_RANDOMIZE_BASE
-          enable_config CONFIG_UNMAP_KERNEL_AT_EL0
-          enable_config CONFIG_HARDEN_BRANCH_PREDICTOR
-          enable_config CONFIG_ARM64_SW_TTBR0_PAN
-          enable_config CONFIG_CC_STACKPROTECTOR
-          enable_config CONFIG_CC_STACKPROTECTOR_STRONG
-          enable_config CONFIG_HARDENED_USERCOPY
-
-          enable_config CONFIG_NETFILTER
-          enable_config CONFIG_NETFILTER_ADVANCED
-          enable_config CONFIG_NF_CONNTRACK
-          enable_config CONFIG_NF_NAT
-          enable_config CONFIG_NF_NAT_IPV4
-          enable_config CONFIG_NF_NAT_MASQUERADE_IPV4
-          enable_config CONFIG_IP_NF_IPTABLES
-          enable_config CONFIG_IP_NF_FILTER
-          enable_config CONFIG_IP_NF_NAT
-          enable_config CONFIG_IP_NF_TARGET_MASQUERADE
-          enable_config CONFIG_IP6_NF_IPTABLES
-          enable_config CONFIG_IP6_NF_FILTER
-          enable_config CONFIG_NETFILTER_XT_TARGET_TPROXY
-          enable_config CONFIG_NETFILTER_XT_MATCH_SOCKET
-          enable_config CONFIG_NETFILTER_XT_MATCH_STATE
-
-          enable_config CONFIG_WIREGUARD
-          enable_config CONFIG_NET_UDP_TUNNEL
-          enable_config CONFIG_NET_IP_TUNNEL
-
-          enable_config CONFIG_TCP_CONG_ADVANCED
+          enable_config CONFIG_CPU_FREQ_GOV_PERFORMANCE
+          
+          # Mematikan semua governor lain agar kernel fokus dan tidak salah alokasi
+          disable_config CONFIG_CPU_FREQ_GOV_POWERSAVE
+          disable_config CONFIG_CPU_FREQ_GOV_USERSPACE
+          disable_config CONFIG_CPU_FREQ_GOV_ONDEMAND
+          disable_config CONFIG_CPU_FREQ_GOV_CONSERVATIVE
+          disable_config CONFIG_CPU_FREQ_GOV_INTERACTIVE
+          
+          # ==========================================
+          # 2. OPTIMALISASI TOUCH & RESPONSIVITAS UI
+          # ==========================================
+          disable_config CONFIG_HZ_300
+          enable_config CONFIG_HZ_1000
+          set_val CONFIG_HZ 1000
+          
+          # ==========================================
+          # 3. OPTIMALISASI JARINGAN (BBR + FQ)
+          # ==========================================
           enable_config CONFIG_TCP_CONG_BBR
-          enable_config CONFIG_TCP_CONG_CUBIC
-          enable_config CONFIG_TCP_CONG_WESTWOOD
+          enable_config CONFIG_NET_SCH_FQ
           set_str CONFIG_DEFAULT_TCP_CONG "bbr"
-          disable_config CONFIG_DEFAULT_CUBIC
-
-          enable_config CONFIG_NET_SCH_FQ_CODEL
-          enable_config CONFIG_NET_SCH_INGRESS
-          enable_config CONFIG_NET_CLS_ACT
-          enable_config CONFIG_NET_CLS_U32
-          enable_config CONFIG_NET_SCHED
-          set_str CONFIG_DEFAULT_NET_SCH "fq_codel"
-          enable_config CONFIG_NET_SCH_DEFAULT
-
-          # ══════════════════════════════════════════════════════════════
-          # SECTION 5 — STABILITY & KSU
-          # ══════════════════════════════════════════════════════════════
-          echo ">>> [5/5] Stability & KSU"
-
-          disable_config CONFIG_DEBUG_KERNEL
-          disable_config CONFIG_DEBUG_INFO
-          disable_config CONFIG_DEBUG_FS
+          
+          # ==========================================
+          # 4. OPTIMALISASI MULTITASKING & ZRAM
+          # ==========================================
+          enable_config CONFIG_ZRAM
+          enable_config CONFIG_ZSMALLOC
+          enable_config CONFIG_CRYPTO_LZ4
+          enable_config CONFIG_ZRAM_LZ4_COMPRESS
+          
+          # ==========================================
+          # 5. KESTABILAN HARIAN & MINIM BUG
+          # ==========================================
+          disable_config CONFIG_PROVE_LOCKING
+          disable_config CONFIG_LOCK_STAT
+          disable_config CONFIG_DEBUG_KMEMLEAK
           disable_config CONFIG_SLUB_DEBUG
           disable_config CONFIG_DEBUG_SPINLOCK
           disable_config CONFIG_DEBUG_MUTEXES
-          disable_config CONFIG_DEBUG_ATOMIC_SLEEP
-          disable_config CONFIG_FTRACE
-          disable_config CONFIG_TRACING
-          disable_config CONFIG_GENERIC_TRACER
+          
+          enable_config CONFIG_PRINTK
+          enable_config CONFIG_BUG
+          enable_config CONFIG_KALLSYMS
+          enable_config CONFIG_KALLSYMS_ALL
+          enable_config CONFIG_PANIC_ON_OOPS
+          set_val CONFIG_PANIC_TIMEOUT 5
 
-          enable_config CONFIG_KSU
-          enable_config CONFIG_KSU_LSM_SECURITY_HOOKS
-          enable_config CONFIG_KSU_EXTRAS
-
-          enable_config CONFIG_SPOOF_KERNEL_VERSION
-          enable_config CONFIG_SPOOF_KERNEL_VERSION_STRING
-
-          echo ""
-          echo "✅ All optimization configs applied to $DEFCONFIG_FILE"
+          echo "All optimization configs applied to $DEFCONFIG_FILE"
           echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
-
-      - name: Verify Critical Configs
-        working-directory: ${{ env.KERNEL_DIR }}
-        run: |
-          echo ">>> Verifying critical configs for boot safety..."
-          FAIL=0
-          for cfg in \
-            CONFIG_EXT4_FS=y \
-            CONFIG_F2FS_FS=y \
-            CONFIG_DM_VERITY=y \
-            CONFIG_ANDROID_BINDER_IPC=y \
-            CONFIG_ION=y \
-            CONFIG_SECURITY_SELINUX=y \
-            CONFIG_ZRAM=y \
-            CONFIG_SWAP=y \
-            CONFIG_SCHED_TUNE=y \
-            CONFIG_DEFAULT_USE_ENERGY_AWARE=y; do
-            if grep -q "^${cfg}$" "${{ env.DEFCONFIG_REL_PATH }}"; then
-              echo "  ✅ ${cfg}"
-            else
-              echo "  ❌ MISSING: ${cfg}"
-              FAIL=1
-            fi
-          done
-          if [ "$FAIL" == "1" ]; then
-            echo "⚠️ Some critical configs missing, but continuing..."
-          fi
-
-      # ────────────────────────────────────────────────────────────────
-      # FIX #3: Restore .gitmodules kalau tadi diubah, dan pastikan
-      #         tidak ada stale submodule entry sebelum commit
-      # ────────────────────────────────────────────────────────────────
-      - name: Pre-Commit Submodule Sanity Check
-        working-directory: ${{ env.KERNEL_DIR }}
-        run: |
-          echo ">>> Pre-commit submodule sanity check..."
-
-          # Kalau .gitmodules tidak ada tapi .git/modules ada → hapus
-          if [ ! -f .gitmodules ] && [ -d .git/modules ]; then
-            echo "⚠️ Orphan .git/modules detected, cleaning..."
-            rm -rf .git/modules
-          fi
-
-          # Restore .gitmodules dari HEAD kalau kita modifikasi tadi
-          if git diff --name-only HEAD | grep -q '^.gitmodules$'; then
-            echo "ℹ️ .gitmodules was modified — restoring from HEAD"
-            git checkout HEAD -- .gitmodules 2>/dev/null || true
-          fi
-
-          # Pastikan tidak ada 160000 (gitlink) di index
-          echo ">>> Checking for gitlink entries in index:"
-          if git ls-files --stage | grep -q '^160000'; then
-            echo "⚠️ Gitlink entries found:"
-            git ls-files --stage | grep '^160000' || true
-            echo ">>> Removing them..."
-            git ls-files --stage | grep '^160000' | awk '{print $4}' | while read -r path; do
-              git rm --cached "$path" 2>/dev/null || true
-            done
-          else
-            echo "  ✅ No gitlink entries — clean"
-          fi
-
-          echo "✅ Pre-commit sanity check passed"
 
       - name: Commit & Push Defconfig (with retry + rebase)
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           git config user.name "${{ secrets.GH_USERNAME }}"
           git config user.email "${{ secrets.GH_EMAIL }}"
-          git config --global --add safe.directory '*' || true
 
-          # Hanya stage defconfig — JANGAN stage .gitmodules atau submodule
+          git rm -r --cached KernelSU || true
+          
           if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
-            echo "ℹ️ No changes detected in defconfig."
+            echo "No changes detected in defconfig."
             exit 0
           fi
 
           git add "${{ env.DEFCONFIG_REL_PATH }}"
-          git commit -m "config: [Optimize] ${{ matrix.device }} (${{ matrix.branch }}) — boot-fix A10-A13 + universal RAM"
+          git commit -m "config: [Optimize] defconfig for ${{ matrix.device }} (${{ matrix.branch }})"
 
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
 
           MAX_RETRY=5
           for i in $(seq 1 $MAX_RETRY); do
             echo "🔁 Push attempt $i/$MAX_RETRY..."
-            if git push origin HEAD:${{ matrix.branch }} 2>&1; then
+            if git push origin HEAD:${{ matrix.branch }}; then
               echo "✅ Push success on attempt $i"
               exit 0
             fi
 
             echo "⚠️ Push rejected, fetching & rebasing..."
-            git fetch origin ${{ matrix.branch }} || true
+            git fetch origin ${{ matrix.branch }}
             git rebase origin/${{ matrix.branch }} || {
-              echo "❌ Rebase conflict, aborting"
+              echo "⚠️ Rebase conflict, aborting"
               git rebase --abort
-              exit 1
+              git pull --rebase -X theirs origin ${{ matrix.branch }}
             }
             sleep 5
           done
 
           echo "❌ Push failed after $MAX_RETRY attempts"
           exit 1
-
-      # ────────────────────────────────────────────────────────────────
-      # FIX #4: Post-job cleanup manual — jalankan SEBELUM checkout's
-      #         auto-cleanup, supaya tidak ada warning submodule
-      # ────────────────────────────────────────────────────────────────
-      - name: Manual Post-Job Cleanup
-        if: always()
-        working-directory: ${{ env.KERNEL_DIR }}
-        run: |
-          echo ">>> Manual cleanup before checkout's auto-cleanup..."
-          git config --local --unset-all 'core.sshCommand' 2>/dev/null || true
-          git submodule deinit -f --all 2>/dev/null || true
-          rm -rf .git/modules 2>/dev/null || true
-          echo "✅ Manual cleanup done"
 
   notify:
     needs: optimize-defconfig
@@ -580,8 +166,7 @@ jobs:
             ICON="❓"
           fi
 
-          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender, whyred</code>\n🌿 <b>Branch:</b> <code>PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, resukisu-susfs</code>\n💾 <b>RAM/Storage:</b> <code>Universal 3/32 · 4/64 · 4/128 · 6/64 (ZRAM LZ4)</code>\n🤖 <b>Android:</b> <code>A10 – A13 Universal</code>\n🔧 <b>Fix:</b> <code>Boot-to-fastboot after bootanimation</code>\n📊 <b>Result:</b> <code>%s</code>' \
-            "$ICON" "$RESULT")
+          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender, whyred</code>\n🌿 <b>Target:</b> <code>EAS 4.4 SDM660</code>\n⚙️ <b>Status:</b> <code>%s</code>\n🔧 <b>Tweaks:</b> <code>HZ=1000, Schedutil+Perf Only, TCP BBR, ZRAM LZ4</code>' "$ICON" "$RESULT")
 
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
