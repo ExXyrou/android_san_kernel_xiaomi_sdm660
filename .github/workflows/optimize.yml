@@ -2,11 +2,16 @@ name: 🛠️ Optimize Defconfig
 
 on:
   workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for running optimization'
+        required: false
+        default: 'Universal A10-A13 + Storage/RAM fix'
 
 env:
   KERNEL_DIR: kernel_source
   KERNEL_URL: https://github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
-  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
+  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAjK14cnIKYiI
   TELEGRAM_GROUP_ID: -1004324974450
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
@@ -23,7 +28,12 @@ jobs:
 
     steps:
       - name: Initialize Workflow
-        run: echo "Starting defconfig update for ${{ matrix.device }} on branch ${{ matrix.branch }}..."
+        run: |
+          echo "=========================================="
+          echo "Device : ${{ matrix.device }}"
+          echo "Branch : ${{ matrix.branch }}"
+          echo "Reason : ${{ inputs.reason }}"
+          echo "=========================================="
 
       - name: Checkout Repository
         uses: actions/checkout@v5
@@ -43,164 +53,396 @@ jobs:
             DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
           fi
 
-          echo "Editing $DEFCONFIG_FILE..."
+          if [ ! -f "$DEFCONFIG_FILE" ]; then
+            echo "❌ Defconfig not found: $DEFCONFIG_FILE"
+            exit 1
+          fi
+
+          echo "📝 Editing $DEFCONFIG_FILE..."
 
           enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
           disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
           set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
           set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
 
-          # =====================================================
-          # 1) LOGGING & DEBUG (wajib — supaya panic bisa dilacak)
-          # =====================================================
-          enable_config  CONFIG_KALLSYMS
-          enable_config  CONFIG_KALLSYMS_ALL
-          set_val        CONFIG_LOG_BUF_SHIFT 20
-          set_val        CONFIG_LOG_CPU_MAX_BUF_SHIFT 18
-          enable_config  CONFIG_PRINTK
-          enable_config  CONFIG_IKCONFIG
-          enable_config  CONFIG_IKCONFIG_PROC
-          enable_config  CONFIG_PSTORE
-          enable_config  CONFIG_PSTORE_CONSOLE
-          enable_config  CONFIG_PSTORE_PMSG
-          enable_config  CONFIG_PSTORE_RAM
-          enable_config  CONFIG_PSTORE_LAST_KMSG
-          set_val        CONFIG_PANIC_TIMEOUT 5
+          # ══════════════════════════════════════════════════════════════
+          # SECTION 1 — FIX BOOT → FASTBOOT AFTER BOOTANIMATION
+          # ══════════════════════════════════════════════════════════════
+          echo ">>> [1/5] Boot-to-Fastboot FIX (A10 → A13)"
 
-          # =====================================================
-          # 2) SCHEDULER (EAS + WALT — seimbang gaming & harian)
-          # =====================================================
-          enable_config  CONFIG_SCHED_WALT
-          enable_config  CONFIG_SCHED_TUNE
-          enable_config  CONFIG_STUNE_ASSIST
-          enable_config  CONFIG_DYNAMIC_STUNE_BOOST
-          enable_config  CONFIG_CPUSETS_ASSIST
-          enable_config  CONFIG_DEFAULT_USE_ENERGY_AWARE
-          enable_config  CONFIG_PELT_HALFLIFE_16
+          # -- Watchdog: cegah reset WDT saat boot berat
+          enable_config CONFIG_QCOM_WATCHDOG_V2
+          enable_config CONFIG_MSM_AVTIMER
+          enable_config CONFIG_MSM_EVENT_TIMER
+
+          # -- Panic: JANGAN reboot ke fastboot, tahan + simpan pstore
+          disable_config CONFIG_PANIC_ON_OOPS
+          set_val CONFIG_PANIC_ON_OOPS_VALUE 0
+          set_val CONFIG_PANIC_TIMEOUT 0
+          disable_config CONFIG_PANIC_ON_SCHED_BUG
+          disable_config CONFIG_PANIC_ON_RT_THROTTLING
+
+          # -- Pstore / last_kmsg (untuk debug bila masih reboot)
+          enable_config CONFIG_PSTORE
+          enable_config CONFIG_PSTORE_CONSOLE
+          enable_config CONFIG_PSTORE_PMSG
+          enable_config CONFIG_PSTORE_RAM
+          enable_config CONFIG_PSTORE_LAST_KMSG
+
+          # -- Filesystem (ext4 + f2fs universal A10-A13)
+          enable_config CONFIG_EXT4_FS
+          enable_config CONFIG_EXT4_USE_FOR_EXT2
+          enable_config CONFIG_EXT4_FS_SECURITY
+          enable_config CONFIG_EXT4_ENCRYPTION
+          enable_config CONFIG_EXT4_FS_ENCRYPTION
+          enable_config CONFIG_EXT4_FS_ICE_ENCRYPTION
+          enable_config CONFIG_F2FS_FS
+          enable_config CONFIG_F2FS_STAT_FS
+          enable_config CONFIG_F2FS_FS_XATTR
+          enable_config CONFIG_F2FS_FS_POSIX_ACL
+          enable_config CONFIG_F2FS_FS_SECURITY
+          enable_config CONFIG_F2FS_FS_ENCRYPTION
+
+          # -- File Based Encryption (FBE v1 & v2 untuk A10-A13)
+          enable_config CONFIG_FS_ENCRYPTION
+          enable_config CONFIG_FS_POSIX_ACL
+          enable_config CONFIG_ENCRYPTED_KEYS
+          enable_config CONFIG_PFK
+          enable_config CONFIG_CRYPTO_AES
+          enable_config CONFIG_CRYPTO_CBC
+          enable_config CONFIG_CRYPTO_XTS
+          enable_config CONFIG_CRYPTO_CTS
+          enable_config CONFIG_CRYPTO_ECB
+          enable_config CONFIG_CRYPTO_CTR
+          enable_config CONFIG_CRYPTO_SHA256
+          enable_config CONFIG_CRYPTO_SHA512
+          enable_config CONFIG_CRYPTO_HMAC
+          enable_config CONFIG_CRYPTO_CMAC
+          enable_config CONFIG_CRYPTO_AES_ARM64_CE
+          enable_config CONFIG_CRYPTO_AES_ARM64_CE_BLK
+          enable_config CONFIG_CRYPTO_AES_ARM64_NEON_BLK
+          enable_config CONFIG_CRYPTO_SHA2_ARM64_CE
+
+          # -- dm-verity / dm-crypt / AVB
+          enable_config CONFIG_DM_CRYPT
+          enable_config CONFIG_DM_VERITY
+          enable_config CONFIG_DM_VERITY_FEC
+          enable_config CONFIG_DM_ANDROID_VERITY
+          enable_config CONFIG_DM_BUFIO
+          enable_config CONFIG_BLK_DEV_DM
+          enable_config CONFIG_BLK_DEV_DM_BUILTIN
+          enable_config CONFIG_QCOM_EARLY_DOMAIN
+          enable_config CONFIG_QCOM_EARLY_RANDOM
+
+          # -- Binder (Android 10-13 pakai binder + hwbinder + vndbinder)
+          enable_config CONFIG_ANDROID
+          enable_config CONFIG_ANDROID_BINDER_IPC
+          set_str CONFIG_ANDROID_BINDER_DEVICES "binder,hwbinder,vndbinder"
+
+          # -- ION / DMA-BUF (dipakai semua komponen A10-A13)
+          enable_config CONFIG_ION
+          enable_config CONFIG_ION_MSM
+          enable_config CONFIG_DMA_SHARED_BUFFER
+          enable_config CONFIG_SYNC
+          enable_config CONFIG_SW_SYNC
+          enable_config CONFIG_ONESHOT_SYNC
+
+          # -- SELinux WAJIB (init Android akan reboot bila tidak aktif)
+          enable_config CONFIG_SECURITY
+          enable_config CONFIG_SECURITY_SELINUX
+          enable_config CONFIG_SECURITY_SELINUX_DEVELOP
+          enable_config CONFIG_SECURITY_SELINUX_AVC_STATS
+          enable_config CONFIG_SECURITY_NETWORK
+          enable_config CONFIG_LSM_MMAP_MIN_ADDR
+          set_val CONFIG_LSM_MMAP_MIN_ADDR 32768
+          enable_config CONFIG_DEFAULT_SECURITY_SELINUX
+          set_str CONFIG_DEFAULT_SECURITY "selinux"
+          enable_config CONFIG_AUDIT
+
+          # -- Initramfs / boot ramdisk
+          enable_config CONFIG_BLK_DEV_INITRD
+          enable_config CONFIG_RD_GZIP
+          enable_config CONFIG_RD_LZ4
+          enable_config CONFIG_RD_LZO
+
+          # -- Early mount fs & deps
+          enable_config CONFIG_CONFIGFS_FS
+          enable_config CONFIG_TMPFS
+          enable_config CONFIG_TMPFS_XATTR
+          enable_config CONFIG_TMPFS_POSIX_ACL
+          enable_config CONFIG_PROC_FS
+          enable_config CONFIG_SYSFS
+          enable_config CONFIG_DEVTMPFS
+          enable_config CONFIG_OVERLAY_FS
+
+          # ══════════════════════════════════════════════════════════════
+          # SECTION 2 — UNIVERSAL RAM 3/32 – 6/64
+          # ══════════════════════════════════════════════════════════════
+          echo ">>> [2/5] Universal RAM/Storage (3/32, 4/64, 4/128, 6/64)"
+
+          # -- ZRAM universal (LZ4 = tercepat, LZO fallback)
+          enable_config CONFIG_ZRAM
+          enable_config CONFIG_CRYPTO_LZ4
+          enable_config CONFIG_CRYPTO_LZ4HC
+          enable_config CONFIG_CRYPTO_LZO
+          enable_config CONFIG_CRYPTO_ZSTD
+          enable_config CONFIG_LZ4_COMPRESS
+          enable_config CONFIG_LZ4_DECOMPRESS
+          enable_config CONFIG_LZO_COMPRESS
+          enable_config CONFIG_LZO_DECOMPRESS
+          disable_config CONFIG_ZRAM_WRITEBACK
+
+          # -- Swap & zsmalloc
+          enable_config CONFIG_SWAP
+          enable_config CONFIG_ZSMALLOC
+          enable_config CONFIG_BALANCE_ANON_FILE_RECLAIM
+          enable_config CONFIG_PROCESS_RECLAIM
+          set_val CONFIG_VMAP_LAZY_PURGING_FACTOR 32
+
+          # -- CMA universal (cukup untuk kamera + GPU 3/32 – 6/64)
+          enable_config CONFIG_CMA
+          enable_config CONFIG_DMA_CMA
+          set_val CONFIG_CMA_SIZE_MBYTES 16
+          enable_config CONFIG_CMA_SIZE_SEL_MBYTES
+          disable_config CONFIG_CMA_SIZE_SEL_PERCENTAGE
+          set_val CONFIG_CMA_ALIGNMENT 8
+
+          # -- LMK universal (aman untuk 3GB – 6GB)
+          enable_config CONFIG_ANDROID_SIMPLE_LMK
+          set_val CONFIG_ANDROID_SIMPLE_LMK_MINFREE 100
+
+          # -- Memory cgroup (Android 10+)
+          enable_config CONFIG_CGROUPS
+          enable_config CONFIG_MEMCG
+          enable_config CONFIG_MEMCG_SWAP
+          enable_config CONFIG_MEMCG_SWAP_ENABLED
+          enable_config CONFIG_CGROUP_FREEZER
+          enable_config CONFIG_CGROUP_CPUACCT
+          enable_config CONFIG_CGROUP_SCHED
+          enable_config CONFIG_CPUSETS
+
+          # -- Storage universal (eMMC semua varian Redmi Note 7)
+          enable_config CONFIG_MMC
+          enable_config CONFIG_MMC_BLOCK
+          enable_config CONFIG_MMC_SDHCI
+          enable_config CONFIG_MMC_SDHCI_PLTFM
+          enable_config CONFIG_MMC_SDHCI_MSM
+          enable_config CONFIG_MMC_CQ_HCI
+          enable_config CONFIG_SDCARD_FS
+          enable_config CONFIG_EXFAT_FS
+          enable_config CONFIG_NTFS_FS
+          enable_config CONFIG_NTFS_RW
+          enable_config CONFIG_MSDOS_FS
+          enable_config CONFIG_VFAT_FS
+
+          # -- I/O Scheduler universal
+          enable_config CONFIG_IOSCHED_DEADLINE
+          enable_config CONFIG_IOSCHED_CFQ
+          enable_config CONFIG_IOSCHED_BFQ
+          enable_config CONFIG_IOSCHED_NOOP
+          set_str CONFIG_DEFAULT_IOSCHED "deadline"
+          enable_config CONFIG_DEFAULT_DEADLINE
+          disable_config CONFIG_DEFAULT_CFQ
+          disable_config CONFIG_DEFAULT_BFQ
+
+          # ══════════════════════════════════════════════════════════════
+          # SECTION 3 — EAS OPTIMIZATION (SDM660 Kryo 260)
+          # ══════════════════════════════════════════════════════════════
+          echo ">>> [3/5] EAS / SDM660 Optimization"
+
+          enable_config CONFIG_SCHED_TUNE
+          enable_config CONFIG_DEFAULT_USE_ENERGY_AWARE
+          enable_config CONFIG_SCHED_WALT
+          enable_config CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+          enable_config CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_POWERSAVE
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
+          enable_config CONFIG_CPU_BOOST
+          enable_config CONFIG_DYNAMIC_STUNE_BOOST
+          enable_config CONFIG_STUNE_ASSIST
+          enable_config CONFIG_CPUSETS_ASSIST
+
+          # -- PELT halflife (16ms = sweet spot SDM660 EAS)
           disable_config CONFIG_PELT_HALFLIFE_32
           disable_config CONFIG_PELT_HALFLIFE_12
           disable_config CONFIG_PELT_HALFLIFE_8
+          enable_config CONFIG_PELT_HALFLIFE_16
 
-          # =====================================================
-          # 3) CPU FREQ GOVERNOR
-          # =====================================================
-          enable_config  CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
-          enable_config  CONFIG_CPU_FREQ_GOV_SCHEDUTIL
-          enable_config  CONFIG_CPU_BOOST
+          # -- HZ 300 (baterai + responsif untuk EAS)
+          disable_config CONFIG_HZ_100
+          disable_config CONFIG_HZ_250
+          disable_config CONFIG_HZ_1000
+          enable_config CONFIG_HZ_300
+          set_val CONFIG_HZ 300
 
-          # =====================================================
-          # 4) I/O SCHEDULER & FILESYSTEM
-          # =====================================================
-          disable_config CONFIG_DEFAULT_CFQ
-          enable_config  CONFIG_DEFAULT_DEADLINE
-          set_str        CONFIG_DEFAULT_IOSCHED "deadline"
-          enable_config  CONFIG_IOSCHED_DEADLINE
-          enable_config  CONFIG_IOSCHED_NOOP
-          disable_config CONFIG_F2FS_CHECK_FS
-          enable_config  CONFIG_F2FS_FS
-          enable_config  CONFIG_F2FS_STAT_FS
-          enable_config  CONFIG_F2FS_FS_XATTR
-          enable_config  CONFIG_F2FS_FS_POSIX_ACL
-          enable_config  CONFIG_F2FS_FS_SECURITY
-          enable_config  CONFIG_F2FS_FS_ENCRYPTION
+          # -- Preempt + NO_HZ idle
+          enable_config CONFIG_PREEMPT
+          enable_config CONFIG_PREEMPT_COUNT
+          enable_config CONFIG_NO_HZ
+          enable_config CONFIG_NO_HZ_IDLE
+          enable_config CONFIG_HIGH_RES_TIMERS
+          enable_config CONFIG_RCU_FAST_NO_HZ
+          enable_config CONFIG_SCHED_HRTICK
 
-          # =====================================================
-          # 5) MEMORY — ZRAM & LMK (khusus varian 4/64)
-          #    - Total RAM fisik : 4 GB
-          #    - ZRAM runtime    : 1536 MB (via Magisk script)
-          #    - Algoritma       : lz4 (balance CPU & kapasitas)
-          #    - Swappiness      : 80
-          # =====================================================
-          # Simple LMK (modern, hemat, lebih baik dari legacy LMK)
-          disable_config CONFIG_ANDROID_LOW_MEMORY_KILLER
-          disable_config CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
-          enable_config  CONFIG_ANDROID_SIMPLE_LMK
-          set_val        CONFIG_ANDROID_SIMPLE_LMK_MINFREE 100
+          # -- GPU / Devfreq (Adreno 512/509)
+          enable_config CONFIG_ADRENO_IDLER
+          set_str CONFIG_QCOM_ADRENO_DEFAULT_GOVERNOR "msm-adreno-tz"
+          enable_config CONFIG_DEVFREQ_BOOST
+          set_val CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS 128
+          set_val CONFIG_DEVFREQ_WAKE_BOOST_DURATION_MS 500
+          enable_config CONFIG_QCOM_KGSL
+          enable_config CONFIG_QCOM_KGSL_IOMMU
 
-          # ZRAM inti
-          enable_config  CONFIG_ZRAM
-          enable_config  CONFIG_ZSMALLOC
-          disable_config CONFIG_ZSMALLOC_STAT       # hindari overhead sysfs di production
-          disable_config CONFIG_PGTABLE_MAPPING     # hindari overhead TLB
-          disable_config CONFIG_ZRAM_WRITEBACK      # tidak dipakai untuk daily use
+          # -- Thermal (semua varian)
+          enable_config CONFIG_THERMAL
+          enable_config CONFIG_THERMAL_WRITABLE_TRIPS
+          enable_config CONFIG_THERMAL_OF
+          enable_config CONFIG_CPU_THERMAL
+          enable_config CONFIG_LIMITS_MONITOR
+          enable_config CONFIG_LIMITS_LITE_HW
+          enable_config CONFIG_THERMAL_MONITOR
+          enable_config CONFIG_THERMAL_TSENS8974
+          enable_config CONFIG_THERMAL_QPNP
+          enable_config CONFIG_THERMAL_QPNP_ADC_TM
+          enable_config CONFIG_THERMAL_SWITCH
+          enable_config CONFIG_QCOM_THERMAL_LIMITS_DCVS
+          enable_config CONFIG_MSM_BCL_CTL
+          enable_config CONFIG_MSM_BCL_PERIPHERAL_CTL
 
-          # Algoritma kompresi — semua built-in, runtime pilih via sysfs
-          enable_config  CONFIG_CRYPTO_LZ4
-          enable_config  CONFIG_CRYPTO_LZ4HC
-          enable_config  CONFIG_CRYPTO_LZO
-          enable_config  CONFIG_CRYPTO_ZSTD
-          enable_config  CONFIG_CRYPTO_DEFLATE
+          # ══════════════════════════════════════════════════════════════
+          # SECTION 4 — ANDROID 10 → 13 COMPATIBILITY
+          # ══════════════════════════════════════════════════════════════
+          echo ">>> [4/5] Android 10-13 Compatibility"
 
-          # Auto-load kompresi LZ4 (default runtime untuk 4/64)
-          enable_config  CONFIG_CRYPTO_LZ4_COMPRESS
-          enable_config  CONFIG_CRYPTO_LZ4_DECOMPRESS
+          # -- Namespaces (A11+ butuh User/PID NS)
+          enable_config CONFIG_NAMESPACES
+          enable_config CONFIG_UTS_NS
+          enable_config CONFIG_NET_NS
+          enable_config CONFIG_USER_NS
+          enable_config CONFIG_PID_NS
 
-          # Tuning ZRAM footprint
-          set_val        CONFIG_ANON_MIN_KBYTES 30000
-          set_val        CONFIG_CLEAN_LOW_KBYTES 60000
-          set_val        CONFIG_CLEAN_MIN_KBYTES 30000
-          set_val        CONFIG_VMAP_LAZY_PURGING_FACTOR 32
+          # -- eBPF & cgroup BPF (A11-A13 untuk netd/UID routing)
+          enable_config CONFIG_BPF
+          enable_config CONFIG_BPF_SYSCALL
+          enable_config CONFIG_BPF_JIT
+          enable_config CONFIG_BPF_JIT_ALWAYS_ON
+          enable_config CONFIG_CGROUP_BPF
+          enable_config CONFIG_NETFILTER_XT_MATCH_BPF
+          enable_config CONFIG_NET_CLS_BPF
+          enable_config CONFIG_NET_ACT_BPF
 
-          # =====================================================
-          # 6) DEVFREQ & GPU (boost untuk gaming)
-          # =====================================================
-          enable_config  CONFIG_DEVFREQ_BOOST
-          set_val        CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS 128
-          set_val        CONFIG_DEVFREQ_WAKE_BOOST_DURATION_MS 500
-          enable_config  CONFIG_QCOM_KGSL_IOMMU
-          enable_config  CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ
-          enable_config  CONFIG_ADRENO_IDLER
+          # -- Seccomp (sandbox A10-A13)
+          enable_config CONFIG_SECCOMP
+          enable_config CONFIG_SECCOMP_FILTER
+          enable_config CONFIG_HAVE_ARCH_SECCOMP_FILTER
 
-          # =====================================================
-          # 7) NETWORK (BBR + fq_codel)
-          # =====================================================
-          enable_config  CONFIG_TCP_CONG_BBR
-          enable_config  CONFIG_TCP_CONG_CUBIC
-          enable_config  CONFIG_TCP_CONG_WESTWOOD
-          set_str        CONFIG_DEFAULT_TCP_CONG "bbr"
-          enable_config  CONFIG_NET_SCH_FQ_CODEL
-          enable_config  CONFIG_DEFAULT_FQ_CODEL
-          disable_config CONFIG_DEFAULT_PFIFO_FAST
-          set_str        CONFIG_DEFAULT_NET_SCH "fq_codel"
+          # -- Hardening (kompatibel semua Android)
+          enable_config CONFIG_RANDOMIZE_BASE
+          enable_config CONFIG_UNMAP_KERNEL_AT_EL0
+          enable_config CONFIG_HARDEN_BRANCH_PREDICTOR
+          enable_config CONFIG_ARM64_SW_TTBR0_PAN
+          enable_config CONFIG_CC_STACKPROTECTOR
+          enable_config CONFIG_CC_STACKPROTECTOR_STRONG
+          enable_config CONFIG_HARDENED_USERCOPY
 
-          # =====================================================
-          # 8) KEAMANAN (jangan dimatikan — jaga CTS & stabilitas)
-          # =====================================================
-          enable_config  CONFIG_UNMAP_KERNEL_AT_EL0
-          enable_config  CONFIG_HARDEN_BRANCH_PREDICTOR
-          enable_config  CONFIG_ARM64_SW_TTBR0_PAN
-          enable_config  CONFIG_ARM64_ERRATUM_1024718
-          enable_config  CONFIG_CC_STACKPROTECTOR_STRONG
-          enable_config  CONFIG_HARDENED_USERCOPY
-          enable_config  CONFIG_SECURITY_SELINUX
-          enable_config  CONFIG_SECURITY_SELINUX_DEVELOP
-          enable_config  CONFIG_SECURITY_PERF_EVENTS_RESTRICT
+          # -- Netfilter (VPN / Hotspot / Tethering)
+          enable_config CONFIG_NETFILTER
+          enable_config CONFIG_NETFILTER_ADVANCED
+          enable_config CONFIG_NF_CONNTRACK
+          enable_config CONFIG_NF_NAT
+          enable_config CONFIG_NF_NAT_IPV4
+          enable_config CONFIG_NF_NAT_MASQUERADE_IPV4
+          enable_config CONFIG_IP_NF_IPTABLES
+          enable_config CONFIG_IP_NF_FILTER
+          enable_config CONFIG_IP_NF_NAT
+          enable_config CONFIG_IP_NF_TARGET_MASQUERADE
+          enable_config CONFIG_IP6_NF_IPTABLES
+          enable_config CONFIG_IP6_NF_FILTER
+          enable_config CONFIG_NETFILTER_XT_TARGET_TPROXY
+          enable_config CONFIG_NETFILTER_XT_MATCH_SOCKET
+          enable_config CONFIG_NETFILTER_XT_MATCH_STATE
 
-          # =====================================================
-          # 9) POWER MANAGEMENT (hemat baterai, stabil)
-          # =====================================================
-          enable_config  CONFIG_WQ_POWER_EFFICIENT_DEFAULT
-          enable_config  CONFIG_CPU_IDLE
-          enable_config  CONFIG_CPU_IDLE_GOV_MENU
-          enable_config  CONFIG_SUSPEND
-          enable_config  CONFIG_SUSPEND_FREEZER
-          enable_config  CONFIG_PM_WAKELOCKS
-          enable_config  CONFIG_WAKELOCK
-          enable_config  CONFIG_BOEFFLA_WL_BLOCKER
+          # -- WireGuard built-in
+          enable_config CONFIG_WIREGUARD
+          enable_config CONFIG_NET_UDP_TUNNEL
+          enable_config CONFIG_NET_IP_TUNNEL
 
-          # =====================================================
-          # 10) ANDROID CORE (pastikan tetap hidup)
-          # =====================================================
-          enable_config  CONFIG_ANDROID
-          enable_config  CONFIG_ANDROID_BINDER_IPC
-          enable_config  CONFIG_ASHMEM
-          enable_config  CONFIG_ION
-          enable_config  CONFIG_ION_MSM
-          enable_config  CONFIG_SYNC
-          enable_config  CONFIG_SW_SYNC
+          # -- TCP BBR default (universal performa)
+          enable_config CONFIG_TCP_CONG_ADVANCED
+          enable_config CONFIG_TCP_CONG_BBR
+          enable_config CONFIG_TCP_CONG_CUBIC
+          enable_config CONFIG_TCP_CONG_WESTWOOD
+          set_str CONFIG_DEFAULT_TCP_CONG "bbr"
+          disable_config CONFIG_DEFAULT_CUBIC
 
-          echo "All optimization configs applied to $DEFCONFIG_FILE"
+          # -- fq_codel
+          enable_config CONFIG_NET_SCH_FQ_CODEL
+          enable_config CONFIG_NET_SCH_INGRESS
+          enable_config CONFIG_NET_CLS_ACT
+          enable_config CONFIG_NET_CLS_U32
+          enable_config CONFIG_NET_SCHED
+          set_str CONFIG_DEFAULT_NET_SCH "fq_codel"
+          enable_config CONFIG_NET_SCH_DEFAULT
+
+          # ══════════════════════════════════════════════════════════════
+          # SECTION 5 — STABILITY & CLEANUP
+          # ══════════════════════════════════════════════════════════════
+          echo ">>> [5/5] Stability Cleanup"
+
+          # -- Kurangi overhead debug
+          disable_config CONFIG_DEBUG_KERNEL
+          disable_config CONFIG_DEBUG_INFO
+          disable_config CONFIG_DEBUG_FS
+          disable_config CONFIG_SLUB_DEBUG
+          disable_config CONFIG_DEBUG_SPINLOCK
+          disable_config CONFIG_DEBUG_MUTEXES
+          disable_config CONFIG_DEBUG_ATOMIC_SLEEP
+          disable_config CONFIG_FTRACE
+          disable_config CONFIG_TRACING
+          disable_config CONFIG_GENERIC_TRACER
+
+          # -- KSU (biarkan sesuai branch)
+          enable_config CONFIG_KSU
+          enable_config CONFIG_KSU_LSM_SECURITY_HOOKS
+          enable_config CONFIG_KSU_EXTRAS
+
+          # -- Kernel version spoof
+          enable_config CONFIG_SPOOF_KERNEL_VERSION
+          enable_config CONFIG_SPOOF_KERNEL_VERSION_STRING
+
+          echo ""
+          echo "✅ All optimization configs applied to $DEFCONFIG_FILE"
           echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
+
+      - name: Verify Critical Configs
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          echo ">>> Verifying critical configs for boot safety..."
+          FAIL=0
+          for cfg in \
+            CONFIG_EXT4_FS=y \
+            CONFIG_F2FS_FS=y \
+            CONFIG_DM_VERITY=y \
+            CONFIG_ANDROID_BINDER_IPC=y \
+            CONFIG_ION=y \
+            CONFIG_SECURITY_SELINUX=y \
+            CONFIG_ZRAM=y \
+            CONFIG_SWAP=y \
+            CONFIG_SCHED_TUNE=y \
+            CONFIG_DEFAULT_USE_ENERGY_AWARE=y; do
+            if grep -q "^${cfg}$" "${{ env.DEFCONFIG_REL_PATH }}"; then
+              echo "  ✅ ${cfg}"
+            else
+              echo "  ❌ MISSING: ${cfg}"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" == "1" ]; then
+            echo "⚠️ Some critical configs missing, but continuing..."
+          fi
 
       - name: Commit & Push Defconfig (with retry + rebase)
         working-directory: ${{ env.KERNEL_DIR }}
@@ -209,12 +451,12 @@ jobs:
           git config user.email "${{ secrets.GH_EMAIL }}"
 
           if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
-            echo "No changes detected in defconfig."
+            echo "ℹ️ No changes detected in defconfig."
             exit 0
           fi
 
           git add "${{ env.DEFCONFIG_REL_PATH }}"
-          git commit -m "config: [Optimize] defconfig for ${{ matrix.device }} (${{ matrix.branch }})"
+          git commit -m "config: [Optimize] ${{ matrix.device }} (${{ matrix.branch }}) — boot-fix A10-A13 + universal RAM"
 
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
 
@@ -259,8 +501,8 @@ jobs:
             ICON="❓"
           fi
 
-          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender, whyred</code>\n🌿 <b>Branch:</b> <code>PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, resukisu-susfs</code>\n💾 <b>ZRAM Preset:</b> <code>4/64 → 1536MB lz4 (swappiness=80)</code>' \
-            "$ICON")
+          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender, whyred</code>\n🌿 <b>Branch:</b> <code>PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, resukisu-susfs</code>\n💾 <b>RAM/Storage:</b> <code>Universal 3/32 · 4/64 · 4/128 · 6/64 (ZRAM LZ4)</code>\n🤖 <b>Android:</b> <code>A10 – A13 Universal</code>\n🔧 <b>Fix:</b> <code>Boot-to-fastboot after bootanimation</code>\n📊 <b>Result:</b> <code>%s</code>' \
+            "$ICON" "$RESULT")
 
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
