@@ -50,10 +50,156 @@ jobs:
           set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
           set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
 
-          # List Tweak Config
+          # =====================================================
+          # 1) LOGGING & DEBUG (wajib — supaya panic bisa dilacak)
+          # =====================================================
+          enable_config  CONFIG_KALLSYMS
+          enable_config  CONFIG_KALLSYMS_ALL
+          set_val        CONFIG_LOG_BUF_SHIFT 20
+          set_val        CONFIG_LOG_CPU_MAX_BUF_SHIFT 18
+          enable_config  CONFIG_PRINTK
+          enable_config  CONFIG_IKCONFIG
+          enable_config  CONFIG_IKCONFIG_PROC
+          enable_config  CONFIG_PSTORE
+          enable_config  CONFIG_PSTORE_CONSOLE
+          enable_config  CONFIG_PSTORE_PMSG
+          enable_config  CONFIG_PSTORE_RAM
+          enable_config  CONFIG_PSTORE_LAST_KMSG
+          set_val        CONFIG_PANIC_TIMEOUT 5
+
+          # =====================================================
+          # 2) SCHEDULER (EAS + WALT — seimbang gaming & harian)
+          # =====================================================
+          enable_config  CONFIG_SCHED_WALT
+          enable_config  CONFIG_SCHED_TUNE
+          enable_config  CONFIG_STUNE_ASSIST
+          enable_config  CONFIG_DYNAMIC_STUNE_BOOST
+          enable_config  CONFIG_CPUSETS_ASSIST
+          enable_config  CONFIG_DEFAULT_USE_ENERGY_AWARE
+          enable_config  CONFIG_PELT_HALFLIFE_16
+          disable_config CONFIG_PELT_HALFLIFE_32
+          disable_config CONFIG_PELT_HALFLIFE_12
+          disable_config CONFIG_PELT_HALFLIFE_8
+
+          # =====================================================
+          # 3) CPU FREQ GOVERNOR
+          # =====================================================
+          enable_config  CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
+          enable_config  CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+          enable_config  CONFIG_CPU_BOOST
+
+          # =====================================================
+          # 4) I/O SCHEDULER & FILESYSTEM
+          # =====================================================
+          disable_config CONFIG_DEFAULT_CFQ
+          enable_config  CONFIG_DEFAULT_DEADLINE
+          set_str        CONFIG_DEFAULT_IOSCHED "deadline"
+          enable_config  CONFIG_IOSCHED_DEADLINE
+          enable_config  CONFIG_IOSCHED_NOOP
+          disable_config CONFIG_F2FS_CHECK_FS
+          enable_config  CONFIG_F2FS_FS
+          enable_config  CONFIG_F2FS_STAT_FS
+          enable_config  CONFIG_F2FS_FS_XATTR
+          enable_config  CONFIG_F2FS_FS_POSIX_ACL
+          enable_config  CONFIG_F2FS_FS_SECURITY
+          enable_config  CONFIG_F2FS_FS_ENCRYPTION
+
+          # =====================================================
+          # 5) MEMORY — ZRAM & LMK (khusus varian 4/64)
+          #    - Total RAM fisik : 4 GB
+          #    - ZRAM runtime    : 1536 MB (via Magisk script)
+          #    - Algoritma       : lz4 (balance CPU & kapasitas)
+          #    - Swappiness      : 80
+          # =====================================================
+          # Simple LMK (modern, hemat, lebih baik dari legacy LMK)
+          disable_config CONFIG_ANDROID_LOW_MEMORY_KILLER
+          disable_config CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
+          enable_config  CONFIG_ANDROID_SIMPLE_LMK
+          set_val        CONFIG_ANDROID_SIMPLE_LMK_MINFREE 100
+
+          # ZRAM inti
+          enable_config  CONFIG_ZRAM
+          enable_config  CONFIG_ZSMALLOC
+          disable_config CONFIG_ZSMALLOC_STAT       # hindari overhead sysfs di production
+          disable_config CONFIG_PGTABLE_MAPPING     # hindari overhead TLB
+          disable_config CONFIG_ZRAM_WRITEBACK      # tidak dipakai untuk daily use
+
+          # Algoritma kompresi — semua built-in, runtime pilih via sysfs
+          enable_config  CONFIG_CRYPTO_LZ4
+          enable_config  CONFIG_CRYPTO_LZ4HC
+          enable_config  CONFIG_CRYPTO_LZO
+          enable_config  CONFIG_CRYPTO_ZSTD
+          enable_config  CONFIG_CRYPTO_DEFLATE
+
+          # Auto-load kompresi LZ4 (default runtime untuk 4/64)
+          enable_config  CONFIG_CRYPTO_LZ4_COMPRESS
+          enable_config  CONFIG_CRYPTO_LZ4_DECOMPRESS
+
+          # Tuning ZRAM footprint
+          set_val        CONFIG_ANON_MIN_KBYTES 30000
+          set_val        CONFIG_CLEAN_LOW_KBYTES 60000
+          set_val        CONFIG_CLEAN_MIN_KBYTES 30000
+          set_val        CONFIG_VMAP_LAZY_PURGING_FACTOR 32
+
+          # =====================================================
+          # 6) DEVFREQ & GPU (boost untuk gaming)
+          # =====================================================
+          enable_config  CONFIG_DEVFREQ_BOOST
+          set_val        CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS 128
+          set_val        CONFIG_DEVFREQ_WAKE_BOOST_DURATION_MS 500
+          enable_config  CONFIG_QCOM_KGSL_IOMMU
+          enable_config  CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ
+          enable_config  CONFIG_ADRENO_IDLER
+
+          # =====================================================
+          # 7) NETWORK (BBR + fq_codel)
+          # =====================================================
+          enable_config  CONFIG_TCP_CONG_BBR
+          enable_config  CONFIG_TCP_CONG_CUBIC
+          enable_config  CONFIG_TCP_CONG_WESTWOOD
+          set_str        CONFIG_DEFAULT_TCP_CONG "bbr"
+          enable_config  CONFIG_NET_SCH_FQ_CODEL
+          enable_config  CONFIG_DEFAULT_FQ_CODEL
+          disable_config CONFIG_DEFAULT_PFIFO_FAST
+          set_str        CONFIG_DEFAULT_NET_SCH "fq_codel"
+
+          # =====================================================
+          # 8) KEAMANAN (jangan dimatikan — jaga CTS & stabilitas)
+          # =====================================================
+          enable_config  CONFIG_UNMAP_KERNEL_AT_EL0
+          enable_config  CONFIG_HARDEN_BRANCH_PREDICTOR
+          enable_config  CONFIG_ARM64_SW_TTBR0_PAN
+          enable_config  CONFIG_ARM64_ERRATUM_1024718
+          enable_config  CONFIG_CC_STACKPROTECTOR_STRONG
+          enable_config  CONFIG_HARDENED_USERCOPY
+          enable_config  CONFIG_SECURITY_SELINUX
+          enable_config  CONFIG_SECURITY_SELINUX_DEVELOP
+          enable_config  CONFIG_SECURITY_PERF_EVENTS_RESTRICT
+
+          # =====================================================
+          # 9) POWER MANAGEMENT (hemat baterai, stabil)
+          # =====================================================
+          enable_config  CONFIG_WQ_POWER_EFFICIENT_DEFAULT
+          enable_config  CONFIG_CPU_IDLE
+          enable_config  CONFIG_CPU_IDLE_GOV_MENU
+          enable_config  CONFIG_SUSPEND
+          enable_config  CONFIG_SUSPEND_FREEZER
+          enable_config  CONFIG_PM_WAKELOCKS
+          enable_config  CONFIG_WAKELOCK
+          enable_config  CONFIG_BOEFFLA_WL_BLOCKER
+
+          # =====================================================
+          # 10) ANDROID CORE (pastikan tetap hidup)
+          # =====================================================
+          enable_config  CONFIG_ANDROID
+          enable_config  CONFIG_ANDROID_BINDER_IPC
+          enable_config  CONFIG_ASHMEM
+          enable_config  CONFIG_ION
+          enable_config  CONFIG_ION_MSM
+          enable_config  CONFIG_SYNC
+          enable_config  CONFIG_SW_SYNC
 
           echo "All optimization configs applied to $DEFCONFIG_FILE"
-
           echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
 
       - name: Commit & Push Defconfig (with retry + rebase)
@@ -113,7 +259,7 @@ jobs:
             ICON="❓"
           fi
 
-          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender, whyred</code>\n🌿 <b>Branch:</b> <code>PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, resukisu-susfs</code>' \
+          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender, whyred</code>\n🌿 <b>Branch:</b> <code>PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, resukisu-susfs</code>\n💾 <b>ZRAM Preset:</b> <code>4/64 → 1536MB lz4 (swappiness=80)</code>' \
             "$ICON")
 
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
