@@ -11,7 +11,7 @@ on:
 env:
   KERNEL_DIR: kernel_source
   KERNEL_URL: https://github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
-  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAjK14cnIKYiI
+  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAjK1I4cnIKYiI
   TELEGRAM_GROUP_ID: -1004324974450
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
@@ -35,6 +35,9 @@ jobs:
           echo "Reason : ${{ inputs.reason }}"
           echo "=========================================="
 
+      # ────────────────────────────────────────────────────────────────
+      # FIX #1: submodules: false → skip init submodule KernelSU yang rusak
+      # ────────────────────────────────────────────────────────────────
       - name: Checkout Repository
         uses: actions/checkout@v5
         with:
@@ -43,6 +46,63 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           path: ${{ env.KERNEL_DIR }}
           fetch-depth: 1
+          submodules: false
+          persist-credentials: true
+
+      # ────────────────────────────────────────────────────────────────
+      # FIX #2: Bersihkan referensi submodule rusak SEBELUM edit
+      # ────────────────────────────────────────────────────────────────
+      - name: Clean Broken Submodule Reference
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          echo ">>> Cleaning broken submodule references..."
+
+          # Safe directory untuk git global
+          git config --global --add safe.directory "$(pwd)" || true
+          git config --global --add safe.directory '*' || true
+
+          # Cek apakah ada .gitmodules
+          if [ -f .gitmodules ]; then
+            echo ">>> .gitmodules found, checking entries..."
+            cat .gitmodules || true
+
+            # Kalau entry KernelSU tidak punya url, hapus
+            if ! grep -q 'url' .gitmodules 2>/dev/null || \
+               ! grep -A2 'KernelSU' .gitmodules 2>/dev/null | grep -q 'url'; then
+              echo "⚠️ Broken .gitmodules detected — removing KernelSU entry"
+              git config -f .gitmodules --remove-section "submodule.KernelSU" 2>/dev/null || true
+              git config -f .gitmodules --remove-section "submodule.KernelSU-Next" 2>/dev/null || true
+            fi
+          else
+            echo ">>> No .gitmodules found (or empty)"
+          fi
+
+          # Hapus entri submodule dari index Git
+          for sub in KernelSU KernelSU-Next KernelSU-Next-2; do
+            if git ls-files --stage | grep -q "160000.*${sub}"; then
+              echo "⚠️ Removing stale submodule entry: ${sub}"
+              git rm --cached "${sub}" 2>/dev/null || \
+                git rm --cached -r "${sub}" 2>/dev/null || true
+            fi
+          done
+
+          # Deinit semua submodule (kalau ada)
+          git submodule deinit -f --all 2>/dev/null || true
+
+          # Hapus folder .git/modules/* kalau ada (stale cache)
+          rm -rf .git/modules/KernelSU 2>/dev/null || true
+          rm -rf .git/modules/KernelSU-Next 2>/dev/null || true
+
+          echo "✅ Submodule cleanup done"
+
+          # Verifikasi
+          echo ""
+          echo ">>> Final .gitmodules check:"
+          if [ -f .gitmodules ]; then
+            cat .gitmodules
+          else
+            echo "  (no .gitmodules file)"
+          fi
 
       - name: Edit Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
@@ -70,26 +130,23 @@ jobs:
           # ══════════════════════════════════════════════════════════════
           echo ">>> [1/5] Boot-to-Fastboot FIX (A10 → A13)"
 
-          # -- Watchdog: cegah reset WDT saat boot berat
           enable_config CONFIG_QCOM_WATCHDOG_V2
           enable_config CONFIG_MSM_AVTIMER
           enable_config CONFIG_MSM_EVENT_TIMER
 
-          # -- Panic: JANGAN reboot ke fastboot, tahan + simpan pstore
           disable_config CONFIG_PANIC_ON_OOPS
           set_val CONFIG_PANIC_ON_OOPS_VALUE 0
           set_val CONFIG_PANIC_TIMEOUT 0
           disable_config CONFIG_PANIC_ON_SCHED_BUG
           disable_config CONFIG_PANIC_ON_RT_THROTTLING
+          disable_config CONFIG_QCOM_FORCE_WDOG_BITE_ON_PANIC
 
-          # -- Pstore / last_kmsg (untuk debug bila masih reboot)
           enable_config CONFIG_PSTORE
           enable_config CONFIG_PSTORE_CONSOLE
           enable_config CONFIG_PSTORE_PMSG
           enable_config CONFIG_PSTORE_RAM
           enable_config CONFIG_PSTORE_LAST_KMSG
 
-          # -- Filesystem (ext4 + f2fs universal A10-A13)
           enable_config CONFIG_EXT4_FS
           enable_config CONFIG_EXT4_USE_FOR_EXT2
           enable_config CONFIG_EXT4_FS_SECURITY
@@ -103,7 +160,6 @@ jobs:
           enable_config CONFIG_F2FS_FS_SECURITY
           enable_config CONFIG_F2FS_FS_ENCRYPTION
 
-          # -- File Based Encryption (FBE v1 & v2 untuk A10-A13)
           enable_config CONFIG_FS_ENCRYPTION
           enable_config CONFIG_FS_POSIX_ACL
           enable_config CONFIG_ENCRYPTED_KEYS
@@ -123,7 +179,6 @@ jobs:
           enable_config CONFIG_CRYPTO_AES_ARM64_NEON_BLK
           enable_config CONFIG_CRYPTO_SHA2_ARM64_CE
 
-          # -- dm-verity / dm-crypt / AVB
           enable_config CONFIG_DM_CRYPT
           enable_config CONFIG_DM_VERITY
           enable_config CONFIG_DM_VERITY_FEC
@@ -134,12 +189,10 @@ jobs:
           enable_config CONFIG_QCOM_EARLY_DOMAIN
           enable_config CONFIG_QCOM_EARLY_RANDOM
 
-          # -- Binder (Android 10-13 pakai binder + hwbinder + vndbinder)
           enable_config CONFIG_ANDROID
           enable_config CONFIG_ANDROID_BINDER_IPC
           set_str CONFIG_ANDROID_BINDER_DEVICES "binder,hwbinder,vndbinder"
 
-          # -- ION / DMA-BUF (dipakai semua komponen A10-A13)
           enable_config CONFIG_ION
           enable_config CONFIG_ION_MSM
           enable_config CONFIG_DMA_SHARED_BUFFER
@@ -147,7 +200,6 @@ jobs:
           enable_config CONFIG_SW_SYNC
           enable_config CONFIG_ONESHOT_SYNC
 
-          # -- SELinux WAJIB (init Android akan reboot bila tidak aktif)
           enable_config CONFIG_SECURITY
           enable_config CONFIG_SECURITY_SELINUX
           enable_config CONFIG_SECURITY_SELINUX_DEVELOP
@@ -159,13 +211,11 @@ jobs:
           set_str CONFIG_DEFAULT_SECURITY "selinux"
           enable_config CONFIG_AUDIT
 
-          # -- Initramfs / boot ramdisk
           enable_config CONFIG_BLK_DEV_INITRD
           enable_config CONFIG_RD_GZIP
           enable_config CONFIG_RD_LZ4
           enable_config CONFIG_RD_LZO
 
-          # -- Early mount fs & deps
           enable_config CONFIG_CONFIGFS_FS
           enable_config CONFIG_TMPFS
           enable_config CONFIG_TMPFS_XATTR
@@ -178,9 +228,8 @@ jobs:
           # ══════════════════════════════════════════════════════════════
           # SECTION 2 — UNIVERSAL RAM 3/32 – 6/64
           # ══════════════════════════════════════════════════════════════
-          echo ">>> [2/5] Universal RAM/Storage (3/32, 4/64, 4/128, 6/64)"
+          echo ">>> [2/5] Universal RAM/Storage"
 
-          # -- ZRAM universal (LZ4 = tercepat, LZO fallback)
           enable_config CONFIG_ZRAM
           enable_config CONFIG_CRYPTO_LZ4
           enable_config CONFIG_CRYPTO_LZ4HC
@@ -192,14 +241,12 @@ jobs:
           enable_config CONFIG_LZO_DECOMPRESS
           disable_config CONFIG_ZRAM_WRITEBACK
 
-          # -- Swap & zsmalloc
           enable_config CONFIG_SWAP
           enable_config CONFIG_ZSMALLOC
           enable_config CONFIG_BALANCE_ANON_FILE_RECLAIM
           enable_config CONFIG_PROCESS_RECLAIM
           set_val CONFIG_VMAP_LAZY_PURGING_FACTOR 32
 
-          # -- CMA universal (cukup untuk kamera + GPU 3/32 – 6/64)
           enable_config CONFIG_CMA
           enable_config CONFIG_DMA_CMA
           set_val CONFIG_CMA_SIZE_MBYTES 16
@@ -207,11 +254,9 @@ jobs:
           disable_config CONFIG_CMA_SIZE_SEL_PERCENTAGE
           set_val CONFIG_CMA_ALIGNMENT 8
 
-          # -- LMK universal (aman untuk 3GB – 6GB)
           enable_config CONFIG_ANDROID_SIMPLE_LMK
           set_val CONFIG_ANDROID_SIMPLE_LMK_MINFREE 100
 
-          # -- Memory cgroup (Android 10+)
           enable_config CONFIG_CGROUPS
           enable_config CONFIG_MEMCG
           enable_config CONFIG_MEMCG_SWAP
@@ -221,7 +266,6 @@ jobs:
           enable_config CONFIG_CGROUP_SCHED
           enable_config CONFIG_CPUSETS
 
-          # -- Storage universal (eMMC semua varian Redmi Note 7)
           enable_config CONFIG_MMC
           enable_config CONFIG_MMC_BLOCK
           enable_config CONFIG_MMC_SDHCI
@@ -235,7 +279,6 @@ jobs:
           enable_config CONFIG_MSDOS_FS
           enable_config CONFIG_VFAT_FS
 
-          # -- I/O Scheduler universal
           enable_config CONFIG_IOSCHED_DEADLINE
           enable_config CONFIG_IOSCHED_CFQ
           enable_config CONFIG_IOSCHED_BFQ
@@ -246,7 +289,7 @@ jobs:
           disable_config CONFIG_DEFAULT_BFQ
 
           # ══════════════════════════════════════════════════════════════
-          # SECTION 3 — EAS OPTIMIZATION (SDM660 Kryo 260)
+          # SECTION 3 — EAS OPTIMIZATION
           # ══════════════════════════════════════════════════════════════
           echo ">>> [3/5] EAS / SDM660 Optimization"
 
@@ -265,20 +308,17 @@ jobs:
           enable_config CONFIG_STUNE_ASSIST
           enable_config CONFIG_CPUSETS_ASSIST
 
-          # -- PELT halflife (16ms = sweet spot SDM660 EAS)
           disable_config CONFIG_PELT_HALFLIFE_32
           disable_config CONFIG_PELT_HALFLIFE_12
           disable_config CONFIG_PELT_HALFLIFE_8
           enable_config CONFIG_PELT_HALFLIFE_16
 
-          # -- HZ 300 (baterai + responsif untuk EAS)
           disable_config CONFIG_HZ_100
           disable_config CONFIG_HZ_250
           disable_config CONFIG_HZ_1000
           enable_config CONFIG_HZ_300
           set_val CONFIG_HZ 300
 
-          # -- Preempt + NO_HZ idle
           enable_config CONFIG_PREEMPT
           enable_config CONFIG_PREEMPT_COUNT
           enable_config CONFIG_NO_HZ
@@ -287,7 +327,6 @@ jobs:
           enable_config CONFIG_RCU_FAST_NO_HZ
           enable_config CONFIG_SCHED_HRTICK
 
-          # -- GPU / Devfreq (Adreno 512/509)
           enable_config CONFIG_ADRENO_IDLER
           set_str CONFIG_QCOM_ADRENO_DEFAULT_GOVERNOR "msm-adreno-tz"
           enable_config CONFIG_DEVFREQ_BOOST
@@ -296,7 +335,6 @@ jobs:
           enable_config CONFIG_QCOM_KGSL
           enable_config CONFIG_QCOM_KGSL_IOMMU
 
-          # -- Thermal (semua varian)
           enable_config CONFIG_THERMAL
           enable_config CONFIG_THERMAL_WRITABLE_TRIPS
           enable_config CONFIG_THERMAL_OF
@@ -317,14 +355,12 @@ jobs:
           # ══════════════════════════════════════════════════════════════
           echo ">>> [4/5] Android 10-13 Compatibility"
 
-          # -- Namespaces (A11+ butuh User/PID NS)
           enable_config CONFIG_NAMESPACES
           enable_config CONFIG_UTS_NS
           enable_config CONFIG_NET_NS
           enable_config CONFIG_USER_NS
           enable_config CONFIG_PID_NS
 
-          # -- eBPF & cgroup BPF (A11-A13 untuk netd/UID routing)
           enable_config CONFIG_BPF
           enable_config CONFIG_BPF_SYSCALL
           enable_config CONFIG_BPF_JIT
@@ -334,12 +370,10 @@ jobs:
           enable_config CONFIG_NET_CLS_BPF
           enable_config CONFIG_NET_ACT_BPF
 
-          # -- Seccomp (sandbox A10-A13)
           enable_config CONFIG_SECCOMP
           enable_config CONFIG_SECCOMP_FILTER
           enable_config CONFIG_HAVE_ARCH_SECCOMP_FILTER
 
-          # -- Hardening (kompatibel semua Android)
           enable_config CONFIG_RANDOMIZE_BASE
           enable_config CONFIG_UNMAP_KERNEL_AT_EL0
           enable_config CONFIG_HARDEN_BRANCH_PREDICTOR
@@ -348,7 +382,6 @@ jobs:
           enable_config CONFIG_CC_STACKPROTECTOR_STRONG
           enable_config CONFIG_HARDENED_USERCOPY
 
-          # -- Netfilter (VPN / Hotspot / Tethering)
           enable_config CONFIG_NETFILTER
           enable_config CONFIG_NETFILTER_ADVANCED
           enable_config CONFIG_NF_CONNTRACK
@@ -365,12 +398,10 @@ jobs:
           enable_config CONFIG_NETFILTER_XT_MATCH_SOCKET
           enable_config CONFIG_NETFILTER_XT_MATCH_STATE
 
-          # -- WireGuard built-in
           enable_config CONFIG_WIREGUARD
           enable_config CONFIG_NET_UDP_TUNNEL
           enable_config CONFIG_NET_IP_TUNNEL
 
-          # -- TCP BBR default (universal performa)
           enable_config CONFIG_TCP_CONG_ADVANCED
           enable_config CONFIG_TCP_CONG_BBR
           enable_config CONFIG_TCP_CONG_CUBIC
@@ -378,7 +409,6 @@ jobs:
           set_str CONFIG_DEFAULT_TCP_CONG "bbr"
           disable_config CONFIG_DEFAULT_CUBIC
 
-          # -- fq_codel
           enable_config CONFIG_NET_SCH_FQ_CODEL
           enable_config CONFIG_NET_SCH_INGRESS
           enable_config CONFIG_NET_CLS_ACT
@@ -388,11 +418,10 @@ jobs:
           enable_config CONFIG_NET_SCH_DEFAULT
 
           # ══════════════════════════════════════════════════════════════
-          # SECTION 5 — STABILITY & CLEANUP
+          # SECTION 5 — STABILITY & KSU
           # ══════════════════════════════════════════════════════════════
-          echo ">>> [5/5] Stability Cleanup"
+          echo ">>> [5/5] Stability & KSU"
 
-          # -- Kurangi overhead debug
           disable_config CONFIG_DEBUG_KERNEL
           disable_config CONFIG_DEBUG_INFO
           disable_config CONFIG_DEBUG_FS
@@ -404,12 +433,10 @@ jobs:
           disable_config CONFIG_TRACING
           disable_config CONFIG_GENERIC_TRACER
 
-          # -- KSU (biarkan sesuai branch)
           enable_config CONFIG_KSU
           enable_config CONFIG_KSU_LSM_SECURITY_HOOKS
           enable_config CONFIG_KSU_EXTRAS
 
-          # -- Kernel version spoof
           enable_config CONFIG_SPOOF_KERNEL_VERSION
           enable_config CONFIG_SPOOF_KERNEL_VERSION_STRING
 
@@ -444,12 +471,50 @@ jobs:
             echo "⚠️ Some critical configs missing, but continuing..."
           fi
 
+      # ────────────────────────────────────────────────────────────────
+      # FIX #3: Restore .gitmodules kalau tadi diubah, dan pastikan
+      #         tidak ada stale submodule entry sebelum commit
+      # ────────────────────────────────────────────────────────────────
+      - name: Pre-Commit Submodule Sanity Check
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          echo ">>> Pre-commit submodule sanity check..."
+
+          # Kalau .gitmodules tidak ada tapi .git/modules ada → hapus
+          if [ ! -f .gitmodules ] && [ -d .git/modules ]; then
+            echo "⚠️ Orphan .git/modules detected, cleaning..."
+            rm -rf .git/modules
+          fi
+
+          # Restore .gitmodules dari HEAD kalau kita modifikasi tadi
+          if git diff --name-only HEAD | grep -q '^.gitmodules$'; then
+            echo "ℹ️ .gitmodules was modified — restoring from HEAD"
+            git checkout HEAD -- .gitmodules 2>/dev/null || true
+          fi
+
+          # Pastikan tidak ada 160000 (gitlink) di index
+          echo ">>> Checking for gitlink entries in index:"
+          if git ls-files --stage | grep -q '^160000'; then
+            echo "⚠️ Gitlink entries found:"
+            git ls-files --stage | grep '^160000' || true
+            echo ">>> Removing them..."
+            git ls-files --stage | grep '^160000' | awk '{print $4}' | while read -r path; do
+              git rm --cached "$path" 2>/dev/null || true
+            done
+          else
+            echo "  ✅ No gitlink entries — clean"
+          fi
+
+          echo "✅ Pre-commit sanity check passed"
+
       - name: Commit & Push Defconfig (with retry + rebase)
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           git config user.name "${{ secrets.GH_USERNAME }}"
           git config user.email "${{ secrets.GH_EMAIL }}"
+          git config --global --add safe.directory '*' || true
 
+          # Hanya stage defconfig — JANGAN stage .gitmodules atau submodule
           if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
             echo "ℹ️ No changes detected in defconfig."
             exit 0
@@ -463,13 +528,13 @@ jobs:
           MAX_RETRY=5
           for i in $(seq 1 $MAX_RETRY); do
             echo "🔁 Push attempt $i/$MAX_RETRY..."
-            if git push origin HEAD:${{ matrix.branch }}; then
+            if git push origin HEAD:${{ matrix.branch }} 2>&1; then
               echo "✅ Push success on attempt $i"
               exit 0
             fi
 
             echo "⚠️ Push rejected, fetching & rebasing..."
-            git fetch origin ${{ matrix.branch }}
+            git fetch origin ${{ matrix.branch }} || true
             git rebase origin/${{ matrix.branch }} || {
               echo "❌ Rebase conflict, aborting"
               git rebase --abort
@@ -480,6 +545,20 @@ jobs:
 
           echo "❌ Push failed after $MAX_RETRY attempts"
           exit 1
+
+      # ────────────────────────────────────────────────────────────────
+      # FIX #4: Post-job cleanup manual — jalankan SEBELUM checkout's
+      #         auto-cleanup, supaya tidak ada warning submodule
+      # ────────────────────────────────────────────────────────────────
+      - name: Manual Post-Job Cleanup
+        if: always()
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          echo ">>> Manual cleanup before checkout's auto-cleanup..."
+          git config --local --unset-all 'core.sshCommand' 2>/dev/null || true
+          git submodule deinit -f --all 2>/dev/null || true
+          rm -rf .git/modules 2>/dev/null || true
+          echo "✅ Manual cleanup done"
 
   notify:
     needs: optimize-defconfig
