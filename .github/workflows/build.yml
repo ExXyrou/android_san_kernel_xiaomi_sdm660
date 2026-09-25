@@ -23,7 +23,7 @@ on:
           - ksun-33024
           - ksun-33068
           - resukisu
-          - resukisu-susfs
+          - susfs
       DISPLAY_BRANCH_NAME:
         description: '🏷️ Display Branch Name'
         required: true
@@ -109,7 +109,7 @@ jobs:
           if [ "${{ inputs.DISPLAY_BRANCH_NAME }}" == "true" ]; then
             if [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33068" ] || [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu" ]; then
               BRANCH_TAG="-st74"
-            elif [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33024" ] || [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-susfs" ]; then
+            elif [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33024" ] || [ "${{ inputs.KERNEL_BRANCH }}" == "susfs" ]; then
               BRANCH_TAG="-PLTS"
             else
               BRANCH_TAG="-${{ inputs.KERNEL_BRANCH }}"
@@ -328,9 +328,9 @@ jobs:
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33068" ]; then
             KSU_TEXT='<a href="https://t.me/exxyroukernel/348/367?single">ksun-33068</a>'
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu" ]; then
-            KSU_TEXT='<a href="https://t.me/exxyroukernel/348/369">resukisu</a>'
-          elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-susfs" ]; then
-            KSU_TEXT='<a href="https://t.me/exxyroukernel/348/370?single">resukisu-susfs</a>'
+            KSU_TEXT='<a href="https://t.me/exxyroukernel/348/531?single">resukisu</a>'
+          elif [ "${{ inputs.KERNEL_BRANCH }}" == "susfs" ]; then
+            KSU_TEXT='<a href="https://t.me/exxyroukernel/348/533?single">susfs</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "kowsu" ]; then
             KSU_TEXT='<a href="https://t.me/kowsu_build">kowsu</a>'
           elif [ "${{ inputs.INJECT_KSU }}" == "xxksu" ]; then
