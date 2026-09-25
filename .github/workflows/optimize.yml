@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         device: [lavender, whyred]
-        branch: [PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, resukisu-susfs]
+        branch: [PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, susfs]
 
     steps:
       - name: Initialize Workflow
