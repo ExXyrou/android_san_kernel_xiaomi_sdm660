@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       search_text:
-        description: 'Text to find (Example: 365)'
+        description: 'Text to find'
         required: true
       replace_text:
-        description: 'Text to replace with (Example: 302)'
-        required: true
+        description: 'Text to replace with'
+        required: false
 
 env:
   KERNEL_DIR: kernel_source
