@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       search_text:
-        description: 'Text to find'
+        description: 'Text to find (Example: 365)'
         required: true
       replace_text:
-        description: 'Text to replace'
+        description: 'Text to replace with (Example: 302)'
         required: true
 
 env:
@@ -42,10 +42,12 @@ jobs:
           SEARCH="${{ inputs.search_text }}"
           REPLACE="${{ inputs.replace_text }}"
           
-          echo "Replacing '$SEARCH' with '$REPLACE'..."
+          echo "Replacing standalone word '$SEARCH' with '$REPLACE'..."
           
           # Replace text ignoring binary files & .git
-          grep -rlI "$SEARCH" --exclude-dir=.git . | xargs -r sed -i "s/$SEARCH/$REPLACE/g"
+          # -w in grep ensures we only match whole words
+          # \b in sed ensures word boundaries (standalone text only)
+          grep -rwlI "$SEARCH" --exclude-dir=.git . | xargs -r sed -i "s/\b$SEARCH\b/$REPLACE/g"
           
           # Create a temporary diff file
           TEMP_DIFF="diff_temp.txt"
