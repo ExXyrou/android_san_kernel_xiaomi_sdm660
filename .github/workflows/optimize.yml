@@ -50,59 +50,44 @@ jobs:
           set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
           set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
 
-          # ==========================================
-          # 1. OPTIMALISASI CPU & GOVERNOR (EAS & Gaming)
-          # ==========================================
-          # Mengaktifkan Schedutil (default) & Performance
-          enable_config CONFIG_CPU_FREQ_GOV_SCHEDUTIL
-          enable_config CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
-          enable_config CONFIG_CPU_FREQ_GOV_PERFORMANCE
-          
-          # Mematikan semua governor lain agar kernel fokus dan tidak salah alokasi
-          disable_config CONFIG_CPU_FREQ_GOV_POWERSAVE
-          disable_config CONFIG_CPU_FREQ_GOV_USERSPACE
-          disable_config CONFIG_CPU_FREQ_GOV_ONDEMAND
-          disable_config CONFIG_CPU_FREQ_GOV_CONSERVATIVE
-          disable_config CONFIG_CPU_FREQ_GOV_INTERACTIVE
-          
-          # ==========================================
-          # 2. OPTIMALISASI TOUCH & RESPONSIVITAS UI
-          # ==========================================
-          disable_config CONFIG_HZ_300
-          enable_config CONFIG_HZ_1000
-          set_val CONFIG_HZ 1000
-          
-          # ==========================================
-          # 3. OPTIMALISASI JARINGAN (BBR + FQ)
-          # ==========================================
-          enable_config CONFIG_TCP_CONG_BBR
-          enable_config CONFIG_NET_SCH_FQ
-          set_str CONFIG_DEFAULT_TCP_CONG "bbr"
-          
-          # ==========================================
-          # 4. OPTIMALISASI MULTITASKING & ZRAM
-          # ==========================================
-          enable_config CONFIG_ZRAM
-          enable_config CONFIG_ZSMALLOC
-          enable_config CONFIG_CRYPTO_LZ4
-          enable_config CONFIG_ZRAM_LZ4_COMPRESS
-          
-          # ==========================================
-          # 5. KESTABILAN HARIAN & MINIM BUG
-          # ==========================================
-          disable_config CONFIG_PROVE_LOCKING
-          disable_config CONFIG_LOCK_STAT
-          disable_config CONFIG_DEBUG_KMEMLEAK
-          disable_config CONFIG_SLUB_DEBUG
-          disable_config CONFIG_DEBUG_SPINLOCK
-          disable_config CONFIG_DEBUG_MUTEXES
-          
-          enable_config CONFIG_PRINTK
-          enable_config CONFIG_BUG
-          enable_config CONFIG_KALLSYMS
-          enable_config CONFIG_KALLSYMS_ALL
-          enable_config CONFIG_PANIC_ON_OOPS
-          set_val CONFIG_PANIC_TIMEOUT 5
+          echo "Applying Performance & Stability Tweaks for SDM660..."
+
+          # 1. Disable Heavy Tracing & Debugging (Mengurangi overhead CPU, dmesg & panic log tetap aman)
+          disable_config FTRACE
+          disable_config TRACING
+          disable_config GENERIC_TRACER
+          disable_config BRANCH_PROFILE_NONE
+          disable_config CONTEXT_SWITCH_TRACER
+          disable_config BLK_DEV_IO_TRACE
+          disable_config TRACER_PKT
+          disable_config SCHED_DEBUG
+          disable_config SCHEDSTATS
+          disable_config SCHED_INFO
+
+          # 2. Disable Unnecessary MSM & SoC Stats (Mencegah micro-stutter saat transisi state CPU)
+          disable_config MSM_IDLE_STATS
+          disable_config MSM_BOOT_STATS
+          disable_config MSM_RUN_QUEUE_STATS
+          disable_config UID_SYS_STATS
+
+          # 3. Optimize I/O Scheduler (FIOPS lebih responsif untuk eMMC dibanding CFQ)
+          enable_config IOSCHED_FIOPS
+          enable_config IOSCHED_SIO
+          disable_config DEFAULT_CFQ
+          set_str DEFAULT_IOSCHED "fiops"
+
+          # 4. Networking Optimization (BBR untuk ping game yang lebih stabil)
+          enable_config TCP_CONG_BBR
+          set_str DEFAULT_TCP_CONG "bbr"
+
+          # 5. Core Performance & EAS Guardrails (Memastikan EAS Schedutil terkunci)
+          enable_config CPU_FREQ_GOV_SCHEDUTIL
+          enable_config DEFAULT_USE_ENERGY_AWARE
+          enable_config CC_OPTIMIZE_FOR_PERFORMANCE
+
+          enable_config ZRAM
+          enable_config ZSMALLOC
+          enable_config ZRAM_LZ4_COMPRESS
 
           echo "All optimization configs applied to $DEFCONFIG_FILE"
           echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
