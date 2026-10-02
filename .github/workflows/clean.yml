@@ -1,0 +1,126 @@
+name: 🛠️ Cleanup Files & Makefile
+
+on:
+  workflow_dispatch:
+
+env:
+  KERNEL_DIR: kernel_source
+  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
+  TELEGRAM_GROUP_ID: -1004324974450
+
+jobs:
+  cleanup-files:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, susfs]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          repository: ExXyrou/android_san_kernel_xiaomi_sdm660
+          ref: ${{ matrix.branch }}
+          token: ${{ secrets.GH_PAT }}
+          path: ${{ env.KERNEL_DIR }}
+          fetch-depth: 0
+
+      - name: Process Cleanup Tasks
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          TEMP_DIFF="diff_temp.txt"
+          > $TEMP_DIFF # Buat file kosong
+          
+          # 1. Hapus file target
+          for FILE in "localversion-st" "san-kernel"; do
+            if [ -f "$FILE" ]; then
+              git rm "$FILE" 2>/dev/null || rm -f "$FILE"
+              echo "Deleted: $FILE" >> $TEMP_DIFF
+            fi
+          done
+          
+          # 2. Hapus isi EXTRAVERSION di Makefile
+          if [ -f "Makefile" ]; then
+            # Mengubah baris EXTRAVERSION = <apapun> menjadi EXTRAVERSION =
+            sed -i 's/^EXTRAVERSION \?=.*/EXTRAVERSION =/g' Makefile
+            
+            # Cek jika Makefile benar-benar berubah
+            if ! git diff --quiet Makefile; then
+              echo "Modified: Makefile (Cleared EXTRAVERSION)" >> $TEMP_DIFF
+            fi
+          fi
+          
+          # 3. Log Perubahan
+          if [ -s $TEMP_DIFF ]; then
+            echo "HAS_CHANGES=true" >> $GITHUB_ENV
+            FILE_LIST="changed_files_${{ matrix.branch }}.txt"
+            echo "=== Branch: ${{ matrix.branch }} ===" > $FILE_LIST
+            cat $TEMP_DIFF >> $FILE_LIST
+            echo "" >> $FILE_LIST
+            echo "FILE_LIST=$FILE_LIST" >> $GITHUB_ENV
+          else
+            echo "HAS_CHANGES=false" >> $GITHUB_ENV
+          fi
+
+      - name: Commit and Push
+        if: env.HAS_CHANGES == 'true'
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          git config user.name "${{ secrets.GH_USERNAME }}"
+          git config user.email "${{ secrets.GH_EMAIL }}"
+          
+          # Menambahkan semua perubahan (termasuk file yang dihapus)
+          git add -A
+          git commit -m "chore: remove localversion-st, san-kernel & clear EXTRAVERSION"
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+          git pull --rebase origin ${{ matrix.branch }}
+          git push origin HEAD:${{ matrix.branch }}
+
+      - name: Upload Logs
+        if: env.HAS_CHANGES == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-${{ matrix.branch }}
+          path: ${{ env.KERNEL_DIR }}/${{ env.FILE_LIST }}
+          retention-days: 1
+
+  notify:
+    needs: cleanup-files
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download all logs
+        uses: actions/download-artifact@v4
+        with:
+          path: changed_logs
+          
+      - name: Send Telegram Result
+        run: |
+          RESULT="${{ needs.cleanup-files.result }}"
+          
+          [ "$RESULT" == "success" ] && ICON="✅" || ICON="❌"
+          MESSAGE=$(printf '%s <b>Cleanup Finished</b>\n\n🗑️ <b>Action:</b> Deleted localversion-st & san-kernel\n📄 <b>Action:</b> Cleared EXTRAVERSION\n⚙️ <b>Result:</b> <code>%s</code>' "$ICON" "$RESULT")
+          FINAL_LOG="all_changed_files.txt"
+          
+          if [ -d "changed_logs" ] && [ "$(ls -A changed_logs 2>/dev/null)" ]; then
+            find changed_logs -type f -name "*.txt" -exec cat {} + > $FINAL_LOG
+          fi
+
+          if [ -f "$FINAL_LOG" ] && [ -s "$FINAL_LOG" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
+              -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+              -F message_thread_id="345" \
+              -F document=@"$FINAL_LOG" \
+              -F caption="$MESSAGE" \
+              -F parse_mode="HTML"
+          else
+            MESSAGE="$MESSAGE%0A%0A<i>No files changed or branches already up to date.</i>"
+            curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
+              -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+              -F message_thread_id="345" \
+              -F text="$MESSAGE" \
+              -F parse_mode="HTML"
+          fi
