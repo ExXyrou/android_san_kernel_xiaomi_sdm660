@@ -1,4 +1,4 @@
-name: 🛠️ Optimize Defconfig (Whyred)
+name: 🛠️ Push Optimize Defconfig (Whyred)
 
 on:
   workflow_dispatch:
