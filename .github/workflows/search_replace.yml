@@ -81,7 +81,9 @@ jobs:
           git add Makefile arch/arm64/configs/lavender_defconfig arch/arm64/configs/whyred_defconfig
           git commit -m "chore: replace '${{ inputs.search_text }}' with '${{ inputs.replace_text }}' in configs"
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
-          git pull --rebase origin ${{ matrix.branch }}
+          
+          # FIX: Tambahkan --autostash agar file txt tidak memblokir proses git pull
+          git pull --rebase --autostash origin ${{ matrix.branch }}
           git push origin HEAD:${{ matrix.branch }}
 
       - name: Upload Logs
