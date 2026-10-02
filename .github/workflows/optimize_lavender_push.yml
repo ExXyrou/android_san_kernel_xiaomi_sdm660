@@ -1,0 +1,183 @@
+name: 🛠️ Optimize Defconfig (Lavender)
+
+on:
+  workflow_dispatch:
+
+env:
+  KERNEL_DIR: kernel_source
+  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
+  TELEGRAM_GROUP_ID: -1004324974450
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
+jobs:
+  optimize-defconfig:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, susfs]
+
+    steps:
+      - name: Initialize Workflow
+        run: echo "Starting defconfig update for lavender on branch ${{ matrix.branch }}..."
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ExXyrou/android_san_kernel_xiaomi_sdm660
+          ref: ${{ matrix.branch }}
+          token: ${{ secrets.GH_PAT }}
+          path: ${{ env.KERNEL_DIR }}
+          fetch-depth: 0
+          submodules: false
+
+      - name: Edit Defconfig
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
+          echo "Editing $DEFCONFIG_FILE..."
+          enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
+          disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
+          set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
+          set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
+          echo "Applying Performance & Stability Tweaks for SDM660..."
+
+          # ============================================================
+          # CPU Governor: Hanya Schedutil (default) & Performance
+          # ============================================================
+          enable_config CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_POWERSAVE
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_USERSPACE
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
+
+          enable_config CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+          enable_config CONFIG_CPU_FREQ_GOV_PERFORMANCE
+          disable_config CONFIG_CPU_FREQ_GOV_POWERSAVE
+          disable_config CONFIG_CPU_FREQ_GOV_USERSPACE
+          disable_config CONFIG_CPU_FREQ_GOV_ONDEMAND
+          disable_config CONFIG_CPU_FREQ_GOV_CONSERVATIVE
+          disable_config CONFIG_CPU_FREQ_GOV_INTERACTIVE
+
+          # ============================================================
+          # HZ = 1000 untuk kelancaran gaming
+          # ============================================================
+          disable_config CONFIG_HZ_100
+          disable_config CONFIG_HZ_250
+          disable_config CONFIG_HZ_300
+          enable_config CONFIG_HZ_1000
+          set_val CONFIG_HZ 1000
+
+          # ============================================================
+          # I/O Scheduler: Default BFQ
+          # ============================================================
+          enable_config CONFIG_IOSCHED_BFQ
+          disable_config CONFIG_DEFAULT_CFQ
+          disable_config CONFIG_DEFAULT_DEADLINE
+          disable_config CONFIG_DEFAULT_NOOP
+          disable_config CONFIG_DEFAULT_MAPLE
+          enable_config CONFIG_DEFAULT_BFQ
+          set_str CONFIG_DEFAULT_IOSCHED "bfq"
+
+          # ============================================================
+          # Networking: FQ_CODEL default, TCP Westwood default
+          # ============================================================
+          enable_config CONFIG_NET_SCH_FQ_CODEL
+          enable_config CONFIG_DEFAULT_FQ_CODEL
+          disable_config CONFIG_DEFAULT_PFIFO_FAST
+          set_str CONFIG_DEFAULT_NET_SCH "fq_codel"
+
+          enable_config CONFIG_TCP_CONG_WESTWOOD
+          disable_config CONFIG_DEFAULT_CUBIC
+          disable_config CONFIG_DEFAULT_BIC
+          disable_config CONFIG_DEFAULT_HTCP
+          disable_config CONFIG_DEFAULT_CDG
+          disable_config CONFIG_DEFAULT_RENO
+          enable_config CONFIG_DEFAULT_WESTWOOD
+          set_str CONFIG_DEFAULT_TCP_CONG "westwood"
+
+          # ============================================================
+          # Kurangi overhead scheduler stats
+          # ============================================================
+          disable_config CONFIG_SCHEDSTATS
+
+          # ============================================================
+          # Pastikan boost & ZRAM tetap aktif
+          # ============================================================
+          enable_config CONFIG_CPU_BOOST
+          enable_config CONFIG_DEVFREQ_BOOST
+          enable_config CONFIG_ZRAM
+          enable_config CONFIG_CRYPTO_LZ4
+
+          # ============================================================
+          # Log penting tetap menyala
+          # ============================================================
+          enable_config CONFIG_PRINTK
+          enable_config CONFIG_PSTORE
+          enable_config CONFIG_PSTORE_RAM
+          enable_config CONFIG_PSTORE_LAST_KMSG
+
+          echo "All optimization configs applied to $DEFCONFIG_FILE"
+          echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
+
+      - name: Commit & Push Defconfig (with retry + rebase)
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          git config user.name "${{ secrets.GH_USERNAME }}"
+          git config user.email "${{ secrets.GH_EMAIL }}"
+          git rm -r --cached KernelSU || true
+          
+          if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
+            echo "No changes detected in defconfig."
+            exit 0
+          fi
+          git add "${{ env.DEFCONFIG_REL_PATH }}"
+          git commit -m "config: [Optimize] defconfig for lavender (${{ matrix.branch }})"
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+          MAX_RETRY=5
+          for i in $(seq 1 $MAX_RETRY); do
+            echo "🔁 Push attempt $i/$MAX_RETRY..."
+            if git push origin HEAD:${{ matrix.branch }}; then
+              echo "✅ Push success on attempt $i"
+              exit 0
+            fi
+            echo "⚠️ Push rejected, fetching & rebasing..."
+            git fetch origin ${{ matrix.branch }}
+            git rebase origin/${{ matrix.branch }} || {
+              echo "⚠️ Rebase conflict, aborting"
+              git rebase --abort
+              git pull --rebase -X theirs origin ${{ matrix.branch }}
+            }
+            sleep 5
+          done
+          echo "❌ Push failed after $MAX_RETRY attempts"
+          exit 1
+
+  notify:
+    needs: optimize-defconfig
+    if: always()
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Send Telegram Notification (Final Result)
+        run: |
+          RESULT="${{ needs.optimize-defconfig.result }}"
+          if [ "$RESULT" == "success" ]; then
+            ICON="✅"
+          elif [ "$RESULT" == "failure" ]; then
+            ICON="❌"
+          elif [ "$RESULT" == "cancelled" ]; then
+            ICON="⚠️"
+          else
+            ICON="❓"
+          fi
+          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender</code>\n🌿 <b>Target:</b> <code>EAS 4.4 SDM660</code>\n⚙️ <b>Status:</b> <code>%s</code>\n🔧 <b>Tweaks:</b> <code>HZ=1000, Schedutil+Perf Only, BFQ Default, FQ_CODEL, Westwood, ZRAM, CPU/Devfreq Boost</code>' "$ICON" "$RESULT")
+          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
+            -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+            -F message_thread_id="345" \
+            -F parse_mode="HTML" \
+            -F text="$MESSAGE"
