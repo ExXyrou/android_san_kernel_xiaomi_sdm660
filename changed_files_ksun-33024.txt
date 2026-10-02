@@ -1,0 +1,4 @@
+=== Branch: ksun-33024 ===
+Deleted: san-kernel
+Modified: Makefile (Cleared EXTRAVERSION)
+
