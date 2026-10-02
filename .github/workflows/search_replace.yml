@@ -1,0 +1,136 @@
+name: 🛠️ Target Find & Replace
+
+on:
+  workflow_dispatch:
+    inputs:
+      search_text:
+        description: 'Text to find'
+        required: true
+      replace_text:
+        description: 'Text to replace'
+        required: false
+
+env:
+  KERNEL_DIR: kernel_source
+  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
+  TELEGRAM_GROUP_ID: -1004324974450
+
+jobs:
+  replace-text:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, susfs]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          repository: ExXyrou/android_san_kernel_xiaomi_sdm660
+          ref: ${{ matrix.branch }}
+          token: ${{ secrets.GH_PAT }}
+          path: ${{ env.KERNEL_DIR }}
+          fetch-depth: 0
+
+      - name: Replace Text in Target Files
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          SEARCH="${{ inputs.search_text }}"
+          REPLACE="${{ inputs.replace_text }}"
+          
+          # Daftar file yang ditargetkan
+          TARGET_FILES="Makefile arch/arm64/configs/lavender_defconfig arch/arm64/configs/whyred_defconfig"
+          
+          TEMP_DIFF="diff_temp.txt"
+          > $TEMP_DIFF # Buat file kosong
+          
+          for FILE in $TARGET_FILES; do
+            if [ -f "$FILE" ]; then
+              # Gunakan \b untuk teks yang berdiri sendiri
+              sed -i "s/\b$SEARCH\b/$REPLACE/g" "$FILE"
+              
+              # Catat jika file tersebut benar-benar berubah
+              if ! git diff --quiet "$FILE"; then
+                echo "$FILE" >> $TEMP_DIFF
+              fi
+            fi
+          done
+          
+          if [ -s $TEMP_DIFF ]; then
+            echo "HAS_CHANGES=true" >> $GITHUB_ENV
+            FILE_LIST="changed_files_${{ matrix.branch }}.txt"
+            echo "=== Branch: ${{ matrix.branch }} ===" > $FILE_LIST
+            cat $TEMP_DIFF >> $FILE_LIST
+            echo "" >> $FILE_LIST
+            echo "FILE_LIST=$FILE_LIST" >> $GITHUB_ENV
+          else
+            echo "HAS_CHANGES=false" >> $GITHUB_ENV
+          fi
+
+      - name: Commit and Push
+        if: env.HAS_CHANGES == 'true'
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          git config user.name "${{ secrets.GH_USERNAME }}"
+          git config user.email "${{ secrets.GH_EMAIL }}"
+          git rm -r --cached KernelSU || true
+          
+          git add Makefile arch/arm64/configs/lavender_defconfig arch/arm64/configs/whyred_defconfig
+          git commit -m "chore: replace '${{ inputs.search_text }}' with '${{ inputs.replace_text }}' in configs"
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+          git pull --rebase origin ${{ matrix.branch }}
+          git push origin HEAD:${{ matrix.branch }}
+
+      - name: Upload Logs
+        if: env.HAS_CHANGES == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-${{ matrix.branch }}
+          path: ${{ env.KERNEL_DIR }}/${{ env.FILE_LIST }}
+          retention-days: 1
+
+  notify:
+    needs: replace-text
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      # Penyesuaian khusus download-artifact@v4
+      - name: Download all logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: log-*
+          path: changed_logs
+          merge-multiple: true
+          
+      - name: Send Telegram Result
+        run: |
+          RESULT="${{ needs.replace-text.result }}"
+          SEARCH="${{ inputs.search_text }}"
+          REPLACE="${{ inputs.replace_text }}"
+          
+          [ "$RESULT" == "success" ] && ICON="✅" || ICON="❌"
+          MESSAGE=$(printf '%s <b>Text Replacement Finished</b>\n\n🔍 <b>Search:</b> <code>%s</code>\n✏️ <b>Replace:</b> <code>%s</code>\n⚙️ <b>Result:</b> <code>%s</code>' "$ICON" "$SEARCH" "$REPLACE" "$RESULT")
+          FINAL_LOG="all_changed_files.txt"
+          
+          if [ -d "changed_logs" ] && [ "$(ls -A changed_logs 2>/dev/null)" ]; then
+            find changed_logs -type f -name "*.txt" -exec cat {} + > $FINAL_LOG
+          fi
+          
+          if [ -f "$FINAL_LOG" ] && [ -s "$FINAL_LOG" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
+              -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+              -F message_thread_id="345" \
+              -F document=@"$FINAL_LOG" \
+              -F caption="$MESSAGE" \
+              -F parse_mode="HTML"
+          else
+            MESSAGE="$MESSAGE%0A%0A<i>No files changed.</i>"
+            curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
+              -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+              -F message_thread_id="345" \
+              -F text="$MESSAGE" \
+              -F parse_mode="HTML"
+          fi
