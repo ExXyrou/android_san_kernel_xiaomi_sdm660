@@ -1,4 +1,4 @@
-name: 🛠️ Optimize Defconfig (Lavender)
+name: 🛠️ Push Optimize Defconfig (Lavender)
 
 on:
   workflow_dispatch:
