@@ -1,0 +1,3 @@
+=== Branch: st78 ===
+Deleted: localversion-st
+
