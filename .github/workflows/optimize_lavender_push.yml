@@ -1,4 +1,4 @@
-name: 🛠️ Push Optimize Defconfig (Lavender)
+name: 🛠️ Optimize Defconfig (Lavender) Push
 
 on:
   workflow_dispatch:
@@ -38,89 +38,38 @@ jobs:
         run: |
           DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
           echo "Editing $DEFCONFIG_FILE..."
+          
           enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
           disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
           set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
           set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
+          
           echo "Applying Performance & Stability Tweaks for SDM660..."
-
-          # ============================================================
-          # CPU Governor: Hanya Schedutil (default) & Performance
-          # ============================================================
-          enable_config CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
-          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE
-          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_POWERSAVE
-          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_USERSPACE
-          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND
-          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
-          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
-
-          enable_config CONFIG_CPU_FREQ_GOV_SCHEDUTIL
-          enable_config CONFIG_CPU_FREQ_GOV_PERFORMANCE
-          disable_config CONFIG_CPU_FREQ_GOV_POWERSAVE
-          disable_config CONFIG_CPU_FREQ_GOV_USERSPACE
-          disable_config CONFIG_CPU_FREQ_GOV_ONDEMAND
-          disable_config CONFIG_CPU_FREQ_GOV_CONSERVATIVE
-          disable_config CONFIG_CPU_FREQ_GOV_INTERACTIVE
-
-          # ============================================================
-          # HZ = 1000 untuk kelancaran gaming
-          # ============================================================
-          disable_config CONFIG_HZ_100
-          disable_config CONFIG_HZ_250
-          disable_config CONFIG_HZ_300
-          enable_config CONFIG_HZ_1000
-          set_val CONFIG_HZ 1000
-
-          # ============================================================
-          # I/O Scheduler: Default BFQ
-          # ============================================================
-          enable_config CONFIG_IOSCHED_BFQ
-          disable_config CONFIG_DEFAULT_CFQ
-          disable_config CONFIG_DEFAULT_DEADLINE
-          disable_config CONFIG_DEFAULT_NOOP
-          disable_config CONFIG_DEFAULT_MAPLE
-          enable_config CONFIG_DEFAULT_BFQ
-          set_str CONFIG_DEFAULT_IOSCHED "bfq"
-
-          # ============================================================
-          # Networking: FQ_CODEL default, TCP Westwood default
-          # ============================================================
-          enable_config CONFIG_NET_SCH_FQ_CODEL
-          enable_config CONFIG_DEFAULT_FQ_CODEL
-          disable_config CONFIG_DEFAULT_PFIFO_FAST
-          set_str CONFIG_DEFAULT_NET_SCH "fq_codel"
-
-          enable_config CONFIG_TCP_CONG_WESTWOOD
-          disable_config CONFIG_DEFAULT_CUBIC
-          disable_config CONFIG_DEFAULT_BIC
-          disable_config CONFIG_DEFAULT_HTCP
-          disable_config CONFIG_DEFAULT_CDG
-          disable_config CONFIG_DEFAULT_RENO
-          enable_config CONFIG_DEFAULT_WESTWOOD
-          set_str CONFIG_DEFAULT_TCP_CONG "westwood"
-
-          # ============================================================
-          # Kurangi overhead scheduler stats
-          # ============================================================
-          disable_config CONFIG_SCHEDSTATS
-
-          # ============================================================
-          # Pastikan boost & ZRAM tetap aktif
-          # ============================================================
-          enable_config CONFIG_CPU_BOOST
-          enable_config CONFIG_DEVFREQ_BOOST
-          enable_config CONFIG_ZRAM
-          enable_config CONFIG_CRYPTO_LZ4
-
-          # ============================================================
-          # Log penting tetap menyala
-          # ============================================================
-          enable_config CONFIG_PRINTK
-          enable_config CONFIG_PSTORE
-          enable_config CONFIG_PSTORE_RAM
-          enable_config CONFIG_PSTORE_LAST_KMSG
-
+          
+          # --- 1. A10-A13 Compatibility (eBPF, PSI, BinderFS) ---
+          enable_config PSI
+          enable_config ANDROID_BINDERFS
+          enable_config BPF_JIT_ALWAYS_ON
+          
+          # --- 2. Gaming Performance (Remove Scheduler Overhead) ---
+          disable_config SCHED_DEBUG
+          disable_config SCHED_INFO
+          disable_config SCHEDSTATS
+          enable_config CC_OPTIMIZE_FOR_PERFORMANCE
+          
+          # --- 3. Stability & Memory Management (Fast ZRAM) ---
+          enable_config CRYPTO_LZ4
+          enable_config ZRAM_LZ4_COMPRESS
+          disable_config ZSMALLOC_STAT
+          
+          # --- 4. Disable Useless Debug Spam (Keep PRINTK & BUG ON) ---
+          disable_config SLUB_DEBUG
+          disable_config DEBUG_KMEMLEAK
+          disable_config DEBUG_VM
+          disable_config DEBUG_MEMORY_INIT
+          disable_config PROVE_LOCKING
+          disable_config LOCK_STAT
+          
           echo "All optimization configs applied to $DEFCONFIG_FILE"
           echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
 
@@ -136,7 +85,13 @@ jobs:
             exit 0
           fi
           git add "${{ env.DEFCONFIG_REL_PATH }}"
-          git commit -m "config: [Optimize] defconfig for lavender (${{ matrix.branch }})"
+          git commit -m "config: [Optimize] defconfig for lavender (${{ matrix.branch }})
+
+          - Enable PSI & BinderFS for A10-13 support
+          - Disable Scheduler Debugging for gaming perf
+          - Enable LZ4 ZRAM compression
+          - Clean useless kernel debug spam"
+          
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
           MAX_RETRY=5
           for i in $(seq 1 $MAX_RETRY); do
@@ -175,7 +130,10 @@ jobs:
           else
             ICON="❓"
           fi
-          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender</code>\n🌿 <b>Target:</b> <code>EAS 4.4 SDM660</code>\n⚙️ <b>Status:</b> <code>%s</code>\n🔧 <b>Tweaks:</b> <code>HZ=1000, Schedutil+Perf Only, BFQ Default, FQ_CODEL, Westwood, ZRAM, CPU/Devfreq Boost</code>' "$ICON" "$RESULT")
+          
+          # Mengubah format pesan agar changelog lebih rapi
+          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender</code>\n🌿 <b>Target:</b> <code>EAS 4.4 SDM660</code>\n⚙️ <b>Status:</b> <code>%s</code>\n🔧 <b>Tweaks:</b>\n- Added A10-A13 support (PSI, BinderFS)\n- Reduced Sched Debug (Perf Boost)\n- LZ4 ZRAM Enabled' "$ICON" "$RESULT")
+          
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
             -F message_thread_id="345" \
