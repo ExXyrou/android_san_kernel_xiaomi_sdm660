@@ -100,7 +100,7 @@ jobs:
           else
             ICON="❓"
           fi
-          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>whyred</code>\n🌿 <b>Target:</b> <code>EAS 4.4 SDM660</code>\n⚙️ <b>Status:</b> <code>%s</code>\n🔧 <b>Tweaks:</b> <code>HZ=1000, Schedutil+Perf Only, TCP BBR, ZRAM LZ4</code>' "$ICON" "$RESULT")
+          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>whyred</code>\n🌿 <b>Target:</b> <code>EAS 4.4 SDM660</code>\n⚙️ <b>Status:</b> <code>%s</code>\n🔧 <b>Information:</b> <code>#Changelog Update</code>' "$ICON" "$RESULT")
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
             -F message_thread_id="345" \
