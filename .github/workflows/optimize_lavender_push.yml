@@ -10,9 +10,6 @@ env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
 jobs:
-  # ============================================================
-  # JOB 1: Matrix optimize per branch
-  # ============================================================
   optimize-defconfig:
     runs-on: ubuntu-22.04
     permissions:
@@ -26,10 +23,11 @@ jobs:
       - name: Initialize Workflow
         run: |
           echo "=========================================="
-          echo "🚀 San Kernel Defconfig Optimizer"
+          echo "🚀 San Kernel Defconfig Optimizer (FIX)"
           echo "📱 Device : lavender (SDM660)"
           echo "🌿 Branch : ${{ matrix.branch }}"
           echo "⚙️  Kernel : 4.4 EAS PELT"
+          echo "🔧 Mode   : Revert DEBUG_FS + keep tweaks"
           echo "=========================================="
 
       - name: Checkout Repository
@@ -47,36 +45,44 @@ jobs:
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
+
+          if [ ! -f "$DEFCONFIG_FILE" ]; then
+            echo "⚠️  $DEFCONFIG_FILE tidak ditemukan di branch ${{ matrix.branch }}"
+            echo "SKIP_REASON=defconfig_not_found" >> $GITHUB_ENV
+            echo "PUSH_STATUS=SKIPPED" >> $GITHUB_ENV
+            echo "SKIP_EDIT=true" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          if [ ! -x "scripts/config" ]; then
+            echo "⚠️  scripts/config tidak ada di branch ${{ matrix.branch }}"
+            echo "SKIP_REASON=scripts_config_missing" >> $GITHUB_ENV
+            echo "PUSH_STATUS=SKIPPED" >> $GITHUB_ENV
+            echo "SKIP_EDIT=true" >> $GITHUB_ENV
+            exit 0
+          fi
+
           echo "📝 Editing $DEFCONFIG_FILE..."
 
           enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
           disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
-          set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
           set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
 
-          echo "🔧 Applying Performance & Stability Tweaks for SDM660..."
-          echo ""
+          echo "🔧 Applying fixes..."
 
-          # ==========================================================
-          # List Tweak — Optimasi untuk gaming + daily use
-          # Basis: EAS PELT, SDM660, kernel 4.4.302
-          # ==========================================================
+          echo "[FIX] Disabling CONFIG_DEBUG_FS (was causing build error)..."
+          disable_config CONFIG_DEBUG_FS
 
-          # --- 1. Foreground / UX responsiveness ---
-          echo "[1/4] Tuning Scheduler & UX..."
+          echo "[1/4] Scheduler & UX..."
           enable_config CONFIG_SCHED_AUTOGROUP
 
-          # --- 2. Debug & kernel manager support (log tetap aman) ---
-          echo "[2/4] Enabling Debug FS & Symbol Support..."
-          enable_config CONFIG_DEBUG_FS
+          echo "[2/4] Symbol support..."
           enable_config CONFIG_KALLSYMS
 
-          # --- 3. Memory management (khusus varian 3/4GB) ---
-          echo "[3/4] Tuning Memory Management..."
+          echo "[3/4] Memory management..."
           enable_config CONFIG_KSM
 
-          # --- 4. Thermal, Stability & Value Tuning ---
-          echo "[4/4] Applying Thermal & Stability Tweaks..."
+          echo "[4/4] Thermal & Stability..."
           enable_config  CONFIG_DEVFREQ_THERMAL
           disable_config CONFIG_PANIC_ON_OOPS
 
@@ -85,20 +91,18 @@ jobs:
           set_val CONFIG_LOG_CPU_MAX_BUF_SHIFT 18
           set_val CONFIG_DEFAULT_HUNG_TASK_TIMEOUT 60
 
-          # ==========================================================
-          # End of List Tweak
-          # ==========================================================
-
           echo ""
-          echo "✅ All optimization configs applied to $DEFCONFIG_FILE"
+          echo "✅ All configs applied to $DEFCONFIG_FILE"
           echo ""
           echo "🔍 Verification:"
-          grep -E "CONFIG_SCHED_AUTOGROUP=|CONFIG_DEBUG_FS=|CONFIG_KALLSYMS=|CONFIG_KSM=|CONFIG_DEVFREQ_THERMAL=|CONFIG_PANIC_ON_OOPS=|CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS=|CONFIG_LOG_BUF_SHIFT=|CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=" "$DEFCONFIG_FILE" || true
+          grep -E "CONFIG_DEBUG_FS=|CONFIG_SCHED_AUTOGROUP=|CONFIG_KALLSYMS=|CONFIG_KSM=|CONFIG_DEVFREQ_THERMAL=|CONFIG_PANIC_ON_OOPS=|CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS=|CONFIG_LOG_BUF_SHIFT=|CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=" "$DEFCONFIG_FILE" || true
 
           echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
+          echo "SKIP_EDIT=false" >> $GITHUB_ENV
 
       - name: Commit & Push Defconfig
         id: push_defconfig
+        if: env.SKIP_EDIT != 'true'
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           git config user.name "${{ secrets.GH_USERNAME }}"
@@ -112,7 +116,7 @@ jobs:
           fi
 
           git add "${{ env.DEFCONFIG_REL_PATH }}"
-          git commit -m "config: [Optimize] defconfig for lavender (${{ matrix.branch }})"
+          git commit -m "config: [Fix] disable DEBUG_FS to resolve msm_bus build error (${{ matrix.branch }})"
 
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
 
@@ -138,23 +142,17 @@ jobs:
           echo "PUSH_STATUS=FAILED" >> $GITHUB_ENV
           exit 1
 
-      # ------------------------------------------------------------
-      # Rekam status branch ke file & upload sebagai artifact
-      # selalu dijalankan (if: always()) agar kegagalan tetap terekam
-      # ------------------------------------------------------------
       - name: Record Branch Result
         if: always()
-        working-directory: ${{ env.KERNEL_DIR }}
         run: |
           mkdir -p /tmp/branch-result
 
           PUSH_STATUS="${{ env.PUSH_STATUS }}"
-          if [ -z "$PUSH_STATUS" ]; then
-            PUSH_STATUS="FAILED"
-          fi
+          [ -z "$PUSH_STATUS" ] && PUSH_STATUS="FAILED"
 
-          echo "${{ matrix.branch }}|${PUSH_STATUS}" > /tmp/branch-result/${{ matrix.branch }}.txt
-          echo "📝 Recorded: ${{ matrix.branch }} -> ${PUSH_STATUS}"
+          SKIP_REASON="${{ env.SKIP_REASON }}"
+          echo "${{ matrix.branch }}|${PUSH_STATUS}|${SKIP_REASON}" > /tmp/branch-result/${{ matrix.branch }}.txt
+          echo "📝 Recorded: ${{ matrix.branch }} -> ${PUSH_STATUS} ${SKIP_REASON}"
 
       - name: Upload Branch Result Artifact
         if: always()
@@ -165,9 +163,6 @@ jobs:
           retention-days: 1
           if-no-files-found: ignore
 
-  # ============================================================
-  # JOB 2: Kirim 1 pesan Telegram setelah SEMUA branch selesai
-  # ============================================================
   notify:
     needs: optimize-defconfig
     if: always()
@@ -191,7 +186,7 @@ jobs:
           RESULT="${{ needs.optimize-defconfig.result }}"
           if [ "$RESULT" == "success" ]; then
             ICON="✅"
-            SUMMARY="All branches optimized successfully"
+            SUMMARY="All branches fixed successfully"
           elif [ "$RESULT" == "failure" ]; then
             ICON="❌"
             SUMMARY="One or more branches failed"
@@ -203,12 +198,12 @@ jobs:
             SUMMARY="Unknown result"
           fi
 
-          # -------- Build branch list dari artifact --------
           BRANCH_LIST=""
           TOTAL=0
           OK_COUNT=0
           FAIL_COUNT=0
           NOCHANGE_COUNT=0
+          SKIP_COUNT=0
 
           if [ -d all-results ]; then
             for f in $(ls all-results/*.txt 2>/dev/null | sort); do
@@ -216,11 +211,13 @@ jobs:
               line=$(cat "$f")
               branch=$(echo "$line" | cut -d'|' -f1)
               status=$(echo "$line" | cut -d'|' -f2)
+              reason=$(echo "$line" | cut -d'|' -f3)
 
               case "$status" in
-                UPDATED)   mark="✅"; ok_label="Updated";  OK_COUNT=$((OK_COUNT+1));;
-                NO_CHANGE) mark="➖"; ok_label="No change"; NOCHANGE_COUNT=$((NOCHANGE_COUNT+1));;
-                FAILED)    mark="❌"; ok_label="Failed";    FAIL_COUNT=$((FAIL_COUNT+1));;
+                UPDATED)   mark="✅"; ok_label="Fixed";          OK_COUNT=$((OK_COUNT+1));;
+                NO_CHANGE) mark="➖"; ok_label="No change";      NOCHANGE_COUNT=$((NOCHANGE_COUNT+1));;
+                SKIPPED)   mark="⏭️"; ok_label="Skipped ($reason)"; SKIP_COUNT=$((SKIP_COUNT+1));;
+                FAILED)    mark="❌"; ok_label="Failed";         FAIL_COUNT=$((FAIL_COUNT+1));;
                 *)         mark="❓"; ok_label="Unknown";;
               esac
 
@@ -233,35 +230,32 @@ jobs:
             BRANCH_LIST="  (no branch data)"
           fi
 
-          # -------- Susun pesan --------
           MESSAGE=$(cat <<EOF
-          ${ICON} <b>San Kernel Defconfig Optimization</b>
+          ${ICON} <b>San Kernel Defconfig — FIX Applied</b>
 
           📱 <b>Device:</b> <code>lavender</code> (SDM660)
           🌿 <b>Target:</b> <code>EAS 4.4 PELT</code>
           ⚙️ <b>Overall:</b> <code>${RESULT}</code> — ${SUMMARY}
-          📊 <b>Result:</b> <code>${TOTAL}</code> branches — ✅${OK_COUNT}  ❌${FAIL_COUNT}  ➖${NOCHANGE_COUNT}
+          📊 <b>Result:</b> <code>${TOTAL}</code> branches — ✅${OK_COUNT}  ❌${FAIL_COUNT}  ➖${NOCHANGE_COUNT}  ⏭️${SKIP_COUNT}
 
           <b>━━━ Branches ━━━</b>
           ${BRANCH_LIST}
-          <b>━━━ Changelog ━━━</b>
-          🧠 <code>SCHED_AUTOGROUP</code> = ON — foreground priority
-          🔍 <code>DEBUG_FS</code> + <code>KALLSYMS</code> = ON — FKM/EXKM + readable logs
-          💾 <code>KSM</code> = ON — RAM saving untuk varian 3/4GB
-          📦 <code>LOG_BUF_SHIFT</code> = 17 → 18 — buffer 256KB
-          🌡️ <code>DEVFREQ_THERMAL</code> = ON — GPU/DDR linked ke thermal
-          🛡️ <code>PANIC_ON_OOPS</code> = OFF — kurangi random reboot
-          ⚡ <code>INPUT_BOOST</code> = 64ms → 100ms — touch responsiveness
-          ⏱️ <code>HUNG_TASK_TIMEOUT</code> = 120s → 60s
+          <b>━━━ Fix Applied ━━━</b>
+          🔧 <code>CONFIG_DEBUG_FS</code> = <b>OFF</b>
+             (resolve msm_bus_dbg.c redefinition error)
 
-          <b>━━━ Notes ━━━</b>
-          ✅ Log penting tetap aktif (PRINTK, MAGIC_SYSRQ, STACKTRACE)
-          ✅ Thermal protection TIDAK dimatikan
-          ✅ Tweaks reversible &amp; traceable
+          <b>━━━ Kept Tweaks ━━━</b>
+          🧠 <code>SCHED_AUTOGROUP</code> = ON
+          🔍 <code>KALLSYMS</code> = ON
+          💾 <code>KSM</code> = ON
+          🌡️ <code>DEVFREQ_THERMAL</code> = ON
+          🛡️ <code>PANIC_ON_OOPS</code> = OFF
+          ⚡ <code>INPUT_BOOST</code> = 100ms
+          📦 <code>LOG_BUF_SHIFT</code> = 18
+          ⏱️ <code>HUNG_TASK_TIMEOUT</code> = 60s
           EOF
           )
 
-          # -------- Kirim --------
           echo "📨 Sending message to Telegram..."
           HTTP_CODE=$(curl -s -o /tmp/tg_response.txt -w "%{http_code}" \
             -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
