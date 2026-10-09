@@ -1,4 +1,4 @@
-name: 🛠️ Optimize Defconfig (Lavender) Push
+name: 🛠️ Push Optimize Defconfig (Lavender)
 
 on:
   workflow_dispatch:
@@ -10,6 +10,9 @@ env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
 jobs:
+  # ============================================================
+  # JOB 1: Matrix optimize per branch
+  # ============================================================
   optimize-defconfig:
     runs-on: ubuntu-22.04
     permissions:
@@ -21,7 +24,13 @@ jobs:
 
     steps:
       - name: Initialize Workflow
-        run: echo "Starting defconfig update for lavender on branch ${{ matrix.branch }}..."
+        run: |
+          echo "=========================================="
+          echo "🚀 San Kernel Defconfig Optimizer"
+          echo "📱 Device : lavender (SDM660)"
+          echo "🌿 Branch : ${{ matrix.branch }}"
+          echo "⚙️  Kernel : 4.4 EAS PELT"
+          echo "=========================================="
 
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -34,108 +43,238 @@ jobs:
           submodules: false
 
       - name: Edit Defconfig
+        id: edit_defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
-          echo "Editing $DEFCONFIG_FILE..."
-          
+          echo "📝 Editing $DEFCONFIG_FILE..."
+
           enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
           disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
           set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
           set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
-          
-          echo "Applying Performance & Stability Tweaks for SDM660..."
-          
-          # --- 1. A10-A13 Compatibility (eBPF, PSI, BinderFS) ---
-          enable_config PSI
-          enable_config ANDROID_BINDERFS
-          enable_config BPF_JIT_ALWAYS_ON
-          
-          # --- 2. Gaming Performance (Remove Scheduler Overhead) ---
-          disable_config SCHED_DEBUG
-          disable_config SCHED_INFO
-          disable_config SCHEDSTATS
-          enable_config CC_OPTIMIZE_FOR_PERFORMANCE
-          
-          # --- 3. Stability & Memory Management (Fast ZRAM) ---
-          enable_config CRYPTO_LZ4
-          enable_config ZRAM_LZ4_COMPRESS
-          disable_config ZSMALLOC_STAT
-          
-          # --- 4. Disable Useless Debug Spam (Keep PRINTK & BUG ON) ---
-          disable_config SLUB_DEBUG
-          disable_config DEBUG_KMEMLEAK
-          disable_config DEBUG_VM
-          disable_config DEBUG_MEMORY_INIT
-          disable_config PROVE_LOCKING
-          disable_config LOCK_STAT
-          
-          echo "All optimization configs applied to $DEFCONFIG_FILE"
+
+          echo "🔧 Applying Performance & Stability Tweaks for SDM660..."
+          echo ""
+
+          # ==========================================================
+          # List Tweak — Optimasi untuk gaming + daily use
+          # Basis: EAS PELT, SDM660, kernel 4.4.302
+          # ==========================================================
+
+          # --- 1. Foreground / UX responsiveness ---
+          echo "[1/4] Tuning Scheduler & UX..."
+          enable_config CONFIG_SCHED_AUTOGROUP
+
+          # --- 2. Debug & kernel manager support (log tetap aman) ---
+          echo "[2/4] Enabling Debug FS & Symbol Support..."
+          enable_config CONFIG_DEBUG_FS
+          enable_config CONFIG_KALLSYMS
+
+          # --- 3. Memory management (khusus varian 3/4GB) ---
+          echo "[3/4] Tuning Memory Management..."
+          enable_config CONFIG_KSM
+
+          # --- 4. Thermal, Stability & Value Tuning ---
+          echo "[4/4] Applying Thermal & Stability Tweaks..."
+          enable_config  CONFIG_DEVFREQ_THERMAL
+          disable_config CONFIG_PANIC_ON_OOPS
+
+          set_val CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS 100
+          set_val CONFIG_LOG_BUF_SHIFT 18
+          set_val CONFIG_LOG_CPU_MAX_BUF_SHIFT 18
+          set_val CONFIG_DEFAULT_HUNG_TASK_TIMEOUT 60
+
+          # ==========================================================
+          # End of List Tweak
+          # ==========================================================
+
+          echo ""
+          echo "✅ All optimization configs applied to $DEFCONFIG_FILE"
+          echo ""
+          echo "🔍 Verification:"
+          grep -E "CONFIG_SCHED_AUTOGROUP=|CONFIG_DEBUG_FS=|CONFIG_KALLSYMS=|CONFIG_KSM=|CONFIG_DEVFREQ_THERMAL=|CONFIG_PANIC_ON_OOPS=|CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS=|CONFIG_LOG_BUF_SHIFT=|CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=" "$DEFCONFIG_FILE" || true
+
           echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
 
-      - name: Commit & Push Defconfig (with retry + rebase)
+      - name: Commit & Push Defconfig
+        id: push_defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           git config user.name "${{ secrets.GH_USERNAME }}"
           git config user.email "${{ secrets.GH_EMAIL }}"
           git rm -r --cached KernelSU || true
-          
+
           if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
-            echo "No changes detected in defconfig."
+            echo "ℹ️  No changes detected in defconfig."
+            echo "PUSH_STATUS=NO_CHANGE" >> $GITHUB_ENV
             exit 0
           fi
-          git add "${{ env.DEFCONFIG_REL_PATH }}"
-          git commit -m "config: [Optimize] defconfig for lavender (${{ matrix.branch }})
 
-          - Enable PSI & BinderFS for A10-13 support
-          - Disable Scheduler Debugging for gaming perf
-          - Enable LZ4 ZRAM compression
-          - Clean useless kernel debug spam"
-          
+          git add "${{ env.DEFCONFIG_REL_PATH }}"
+          git commit -m "config: [Optimize] defconfig for lavender (${{ matrix.branch }})"
+
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+
           MAX_RETRY=5
           for i in $(seq 1 $MAX_RETRY); do
             echo "🔁 Push attempt $i/$MAX_RETRY..."
             if git push origin HEAD:${{ matrix.branch }}; then
               echo "✅ Push success on attempt $i"
+              echo "PUSH_STATUS=UPDATED" >> $GITHUB_ENV
               exit 0
             fi
-            echo "⚠️ Push rejected, fetching & rebasing..."
+            echo "⚠️  Push rejected, fetching & rebasing..."
             git fetch origin ${{ matrix.branch }}
             git rebase origin/${{ matrix.branch }} || {
-              echo "⚠️ Rebase conflict, aborting"
+              echo "⚠️  Rebase conflict, aborting"
               git rebase --abort
               git pull --rebase -X theirs origin ${{ matrix.branch }}
             }
             sleep 5
           done
+
           echo "❌ Push failed after $MAX_RETRY attempts"
+          echo "PUSH_STATUS=FAILED" >> $GITHUB_ENV
           exit 1
 
+      # ------------------------------------------------------------
+      # Rekam status branch ke file & upload sebagai artifact
+      # selalu dijalankan (if: always()) agar kegagalan tetap terekam
+      # ------------------------------------------------------------
+      - name: Record Branch Result
+        if: always()
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          mkdir -p /tmp/branch-result
+
+          PUSH_STATUS="${{ env.PUSH_STATUS }}"
+          if [ -z "$PUSH_STATUS" ]; then
+            PUSH_STATUS="FAILED"
+          fi
+
+          echo "${{ matrix.branch }}|${PUSH_STATUS}" > /tmp/branch-result/${{ matrix.branch }}.txt
+          echo "📝 Recorded: ${{ matrix.branch }} -> ${PUSH_STATUS}"
+
+      - name: Upload Branch Result Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-result-${{ matrix.branch }}
+          path: /tmp/branch-result/
+          retention-days: 1
+          if-no-files-found: ignore
+
+  # ============================================================
+  # JOB 2: Kirim 1 pesan Telegram setelah SEMUA branch selesai
+  # ============================================================
   notify:
     needs: optimize-defconfig
     if: always()
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Send Telegram Notification (Final Result)
+      - name: Download All Branch Results
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results
+          pattern: branch-result-*
+          merge-multiple: true
+
+      - name: Inspect Downloaded Results
+        run: |
+          echo "📂 Hasil unduhan artifact:"
+          ls -la all-results/ || echo "(kosong)"
+
+      - name: Send Telegram Notification (Single Message)
         run: |
           RESULT="${{ needs.optimize-defconfig.result }}"
           if [ "$RESULT" == "success" ]; then
             ICON="✅"
+            SUMMARY="All branches optimized successfully"
           elif [ "$RESULT" == "failure" ]; then
             ICON="❌"
+            SUMMARY="One or more branches failed"
           elif [ "$RESULT" == "cancelled" ]; then
             ICON="⚠️"
+            SUMMARY="Workflow cancelled"
           else
             ICON="❓"
+            SUMMARY="Unknown result"
           fi
-          
-          # Mengubah format pesan agar changelog lebih rapi
-          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender</code>\n🌿 <b>Target:</b> <code>EAS 4.4 SDM660</code>\n⚙️ <b>Status:</b> <code>%s</code>\n🔧 <b>Tweaks:</b>\n- Added A10-A13 support (PSI, BinderFS)\n- Reduced Sched Debug (Perf Boost)\n- LZ4 ZRAM Enabled' "$ICON" "$RESULT")
-          
-          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
+
+          # -------- Build branch list dari artifact --------
+          BRANCH_LIST=""
+          TOTAL=0
+          OK_COUNT=0
+          FAIL_COUNT=0
+          NOCHANGE_COUNT=0
+
+          if [ -d all-results ]; then
+            for f in $(ls all-results/*.txt 2>/dev/null | sort); do
+              [ -f "$f" ] || continue
+              line=$(cat "$f")
+              branch=$(echo "$line" | cut -d'|' -f1)
+              status=$(echo "$line" | cut -d'|' -f2)
+
+              case "$status" in
+                UPDATED)   mark="✅"; ok_label="Updated";  OK_COUNT=$((OK_COUNT+1));;
+                NO_CHANGE) mark="➖"; ok_label="No change"; NOCHANGE_COUNT=$((NOCHANGE_COUNT+1));;
+                FAILED)    mark="❌"; ok_label="Failed";    FAIL_COUNT=$((FAIL_COUNT+1));;
+                *)         mark="❓"; ok_label="Unknown";;
+              esac
+
+              BRANCH_LIST="${BRANCH_LIST}  ${mark} <code>${branch}</code> — ${ok_label}"$'\n'
+              TOTAL=$((TOTAL+1))
+            done
+          fi
+
+          if [ -z "$BRANCH_LIST" ]; then
+            BRANCH_LIST="  (no branch data)"
+          fi
+
+          # -------- Susun pesan --------
+          MESSAGE=$(cat <<EOF
+          ${ICON} <b>San Kernel Defconfig Optimization</b>
+
+          📱 <b>Device:</b> <code>lavender</code> (SDM660)
+          🌿 <b>Target:</b> <code>EAS 4.4 PELT</code>
+          ⚙️ <b>Overall:</b> <code>${RESULT}</code> — ${SUMMARY}
+          📊 <b>Result:</b> <code>${TOTAL}</code> branches — ✅${OK_COUNT}  ❌${FAIL_COUNT}  ➖${NOCHANGE_COUNT}
+
+          <b>━━━ Branches ━━━</b>
+          ${BRANCH_LIST}
+          <b>━━━ Changelog ━━━</b>
+          🧠 <code>SCHED_AUTOGROUP</code> = ON — foreground priority
+          🔍 <code>DEBUG_FS</code> + <code>KALLSYMS</code> = ON — FKM/EXKM + readable logs
+          💾 <code>KSM</code> = ON — RAM saving untuk varian 3/4GB
+          📦 <code>LOG_BUF_SHIFT</code> = 17 → 18 — buffer 256KB
+          🌡️ <code>DEVFREQ_THERMAL</code> = ON — GPU/DDR linked ke thermal
+          🛡️ <code>PANIC_ON_OOPS</code> = OFF — kurangi random reboot
+          ⚡ <code>INPUT_BOOST</code> = 64ms → 100ms — touch responsiveness
+          ⏱️ <code>HUNG_TASK_TIMEOUT</code> = 120s → 60s
+
+          <b>━━━ Notes ━━━</b>
+          ✅ Log penting tetap aktif (PRINTK, MAGIC_SYSRQ, STACKTRACE)
+          ✅ Thermal protection TIDAK dimatikan
+          ✅ Tweaks reversible &amp; traceable
+          EOF
+          )
+
+          # -------- Kirim --------
+          echo "📨 Sending message to Telegram..."
+          HTTP_CODE=$(curl -s -o /tmp/tg_response.txt -w "%{http_code}" \
+            -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
             -F message_thread_id="345" \
             -F parse_mode="HTML" \
-            -F text="$MESSAGE"
+            -F text="$MESSAGE")
+
+          echo "HTTP: $HTTP_CODE"
+          cat /tmp/tg_response.txt
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Telegram send failed"
+            exit 1
+          fi
+          echo "✅ Telegram notification sent successfully"
