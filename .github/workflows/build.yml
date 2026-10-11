@@ -23,8 +23,8 @@ on:
           - ksun-33024
           - ksun-33068
           - resukisu
+          - resukisu-droidspaces
           - susfs
-          - test
       LOCALVERSION:
         description: '🏷️ Custom Kernel Name (e.g., MyKernel-v1.0)'
         required: true
@@ -296,6 +296,9 @@ jobs:
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu" ]; then
             gh release download resukisu-34681 -R ExXyrou/KernelSU_Manager -p "*.apk" -D ksu_managers
             HAS_KSU=true
+          elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-droidspaces" ]; then
+            gh release download resukisu-34681 -R ExXyrou/KernelSU_Manager -p "*.apk" -D ksu_managers
+            HAS_KSU=true
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "susfs" ]; then
             gh release download resukisu-susfs-35107 -R ExXyrou/KernelSU_Manager -p "*.apk" -D ksu_managers
             HAS_KSU=true
@@ -324,6 +327,8 @@ jobs:
             KSU_TEXT='<code>ksun-33068</code>'
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu" ]; then
             KSU_TEXT='<code>resukisu</code>'
+          elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu-droidspaces" ]; then
+            KSU_TEXT='<code>resukisu (Droidspaces)</code>'
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "susfs" ]; then
             KSU_TEXT='<code>susfs</code>'
           elif [ "${{ inputs.INJECT_KSU }}" == "true" ]; then
