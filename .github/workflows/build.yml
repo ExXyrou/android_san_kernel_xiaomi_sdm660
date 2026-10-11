@@ -24,6 +24,7 @@ on:
           - ksun-33068
           - resukisu
           - susfs
+          - test
       LOCALVERSION:
         description: '🏷️ Custom Kernel Name (e.g., MyKernel-v1.0)'
         required: true
