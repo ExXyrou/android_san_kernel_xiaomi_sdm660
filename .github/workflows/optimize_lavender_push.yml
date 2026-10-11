@@ -1,4 +1,4 @@
-name: 🛠️ Push Optimize Defconfig (Lavender)
+name: 🛠️ Patch Droidspaces (Lavender)
 
 on:
   workflow_dispatch:
@@ -10,25 +10,18 @@ env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
 jobs:
-  optimize-defconfig:
+  patch-droidspaces:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
-        branch: [PLTS, st74, st78, ksun-33024, ksun-33068, resukisu, susfs]
+        branch: [test]
 
     steps:
       - name: Initialize Workflow
-        run: |
-          echo "=========================================="
-          echo "🚀 San Kernel Defconfig Optimizer (FIX)"
-          echo "📱 Device : lavender (SDM660)"
-          echo "🌿 Branch : ${{ matrix.branch }}"
-          echo "⚙️  Kernel : 4.4 EAS PELT"
-          echo "🔧 Mode   : Revert DEBUG_FS + keep tweaks"
-          echo "=========================================="
+        run: echo "Starting Droidspaces patch for lavender on branch ${{ matrix.branch }}..."
 
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -40,235 +33,120 @@ jobs:
           fetch-depth: 0
           submodules: false
 
+      - name: Apply Droidspaces Kernel Patches
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          echo "Checking for Droidspaces patches..."
+          PATCH_DIR="Documentation/resources/kernel-patches/non-GKI"
+          if [ -d "$PATCH_DIR" ]; then
+            for patchfile in "$PATCH_DIR"/*.patch; do
+              [ -e "$patchfile" ] || continue
+              echo "Applying patch: $patchfile"
+              patch -p1 < "$patchfile"
+            done
+          else
+            echo "⚠️ Directory $PATCH_DIR not found. Skipping source patches."
+          fi
+
       - name: Edit Defconfig
-        id: edit_defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
-
-          if [ ! -f "$DEFCONFIG_FILE" ]; then
-            echo "⚠️  $DEFCONFIG_FILE tidak ditemukan di branch ${{ matrix.branch }}"
-            echo "SKIP_REASON=defconfig_not_found" >> $GITHUB_ENV
-            echo "PUSH_STATUS=SKIPPED" >> $GITHUB_ENV
-            echo "SKIP_EDIT=true" >> $GITHUB_ENV
-            exit 0
-          fi
-
-          if [ ! -x "scripts/config" ]; then
-            echo "⚠️  scripts/config tidak ada di branch ${{ matrix.branch }}"
-            echo "SKIP_REASON=scripts_config_missing" >> $GITHUB_ENV
-            echo "PUSH_STATUS=SKIPPED" >> $GITHUB_ENV
-            echo "SKIP_EDIT=true" >> $GITHUB_ENV
-            exit 0
-          fi
-
-          echo "📝 Editing $DEFCONFIG_FILE..."
-
+          echo "Editing $DEFCONFIG_FILE for Droidspaces support..."
+          
           enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
           disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
-          set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
+          
+          ENABLE_CONFIGS=(
+            SYSCTL SYSVIPC POSIX_MQUEUE NAMESPACES PID_NS UTS_NS IPC_NS
+            SECCOMP SECCOMP_FILTER CGROUPS CGROUP_DEVICE CGROUP_SCHED
+            FAIR_GROUP_SCHED CGROUP_FREEZER CGROUP_NET_PRIO MEMCG
+            CFS_BANDWIDTH CGROUP_PIDS CGROUP_CPUACCT DEVTMPFS OVERLAY_FS
+            TMPFS_POSIX_ACL TMPFS_XATTR FW_LOADER FW_LOADER_USER_HELPER
+            FW_LOADER_COMPRESS NET_NS VETH BRIDGE NETFILTER BRIDGE_NETFILTER
+            NETFILTER_ADVANCED NF_CONNTRACK IP_NF_IPTABLES IP_NF_FILTER
+            NF_NAT NF_TABLES IP_NF_TARGET_MASQUERADE NETFILTER_XT_TARGET_MASQUERADE
+            NETFILTER_XT_TARGET_TCPMSS NETFILTER_XT_MATCH_ADDRTYPE NF_CONNTRACK_NETLINK
+            NF_NAT_REDIRECT IP_ADVANCED_ROUTER IP_MULTIPLE_TABLES NF_CONNTRACK_IPV4
+            NF_NAT_IPV4 IP_NF_NAT IPV6 IPV6_MULTIPLE_TABLES IP6_NF_IPTABLES
+            IP6_NF_FILTER IP6_NF_MANGLE IP6_NF_NAT IP6_NF_TARGET_MASQUERADE
+            NF_CONNTRACK_IPV6 NF_NAT_IPV6 USER_NS NETFILTER_XT_MATCH_COMMENT
+            NETFILTER_XT_MATCH_STATE NETFILTER_XT_MATCH_CONNTRACK NETFILTER_XT_MATCH_MULTIPORT
+            NETFILTER_XT_MATCH_HL NETFILTER_XT_TARGET_REJECT IP_NF_TARGET_REJECT
+            NETFILTER_XT_TARGET_LOG IP_NF_TARGET_ULOG NETFILTER_XT_MATCH_RECENT
+            NETFILTER_XT_MATCH_LIMIT NETFILTER_XT_MATCH_HASHLIMIT NETFILTER_XT_MATCH_OWNER
+            NETFILTER_XT_MATCH_PKTTYPE NETFILTER_XT_MATCH_MARK NETFILTER_XT_TARGET_MARK
+            IP_SET IP_SET_HASH_IP IP_SET_HASH_NET NETFILTER_XT_SET
+            NETFILTER_NETLINK_QUEUE NETFILTER_NETLINK_LOG NETFILTER_XT_TARGET_NFLOG
+          )
 
-          echo "🔧 Applying fixes..."
+          for conf in "${ENABLE_CONFIGS[@]}"; do
+            enable_config "$conf"
+          done
 
-          echo "[FIX] Disabling CONFIG_DEBUG_FS (was causing build error)..."
-          disable_config CONFIG_DEBUG_FS
+          echo "Disabling conflicting configs..."
+          disable_config "ANDROID_PARANOID_NETWORK"
+          
+          echo "All Droidspaces configs applied to $DEFCONFIG_FILE"
 
-          echo "[1/4] Scheduler & UX..."
-          enable_config CONFIG_SCHED_AUTOGROUP
-
-          echo "[2/4] Symbol support..."
-          enable_config CONFIG_KALLSYMS
-
-          echo "[3/4] Memory management..."
-          enable_config CONFIG_KSM
-
-          echo "[4/4] Thermal & Stability..."
-          enable_config  CONFIG_DEVFREQ_THERMAL
-          disable_config CONFIG_PANIC_ON_OOPS
-
-          set_val CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS 100
-          set_val CONFIG_LOG_BUF_SHIFT 18
-          set_val CONFIG_LOG_CPU_MAX_BUF_SHIFT 18
-          set_val CONFIG_DEFAULT_HUNG_TASK_TIMEOUT 60
-
-          echo ""
-          echo "✅ All configs applied to $DEFCONFIG_FILE"
-          echo ""
-          echo "🔍 Verification:"
-          grep -E "CONFIG_DEBUG_FS=|CONFIG_SCHED_AUTOGROUP=|CONFIG_KALLSYMS=|CONFIG_KSM=|CONFIG_DEVFREQ_THERMAL=|CONFIG_PANIC_ON_OOPS=|CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS=|CONFIG_LOG_BUF_SHIFT=|CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=" "$DEFCONFIG_FILE" || true
-
-          echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
-          echo "SKIP_EDIT=false" >> $GITHUB_ENV
-
-      - name: Commit & Push Defconfig
-        id: push_defconfig
-        if: env.SKIP_EDIT != 'true'
+      - name: Commit & Push Changes
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           git config user.name "${{ secrets.GH_USERNAME }}"
           git config user.email "${{ secrets.GH_EMAIL }}"
           git rm -r --cached KernelSU || true
-
-          if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
-            echo "ℹ️  No changes detected in defconfig."
-            echo "PUSH_STATUS=NO_CHANGE" >> $GITHUB_ENV
+          
+          git add .
+          
+          if git diff --staged --quiet; then
+            echo "No changes detected in source or defconfig."
             exit 0
           fi
-
-          git add "${{ env.DEFCONFIG_REL_PATH }}"
-          git commit -m "config: [Fix] disable DEBUG_FS to resolve msm_bus build error (${{ matrix.branch }})"
-
+          
+          git commit -m "config: [Patch] Apply Droidspaces requirement tweaks & patches (${{ matrix.branch }})"
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
-
+          
           MAX_RETRY=5
           for i in $(seq 1 $MAX_RETRY); do
             echo "🔁 Push attempt $i/$MAX_RETRY..."
             if git push origin HEAD:${{ matrix.branch }}; then
               echo "✅ Push success on attempt $i"
-              echo "PUSH_STATUS=UPDATED" >> $GITHUB_ENV
               exit 0
             fi
-            echo "⚠️  Push rejected, fetching & rebasing..."
+            echo "⚠️ Push rejected, fetching & rebasing..."
             git fetch origin ${{ matrix.branch }}
             git rebase origin/${{ matrix.branch }} || {
-              echo "⚠️  Rebase conflict, aborting"
+              echo "⚠️ Rebase conflict, aborting"
               git rebase --abort
               git pull --rebase -X theirs origin ${{ matrix.branch }}
             }
             sleep 5
           done
-
           echo "❌ Push failed after $MAX_RETRY attempts"
-          echo "PUSH_STATUS=FAILED" >> $GITHUB_ENV
           exit 1
 
-      - name: Record Branch Result
-        if: always()
-        run: |
-          mkdir -p /tmp/branch-result
-
-          PUSH_STATUS="${{ env.PUSH_STATUS }}"
-          [ -z "$PUSH_STATUS" ] && PUSH_STATUS="FAILED"
-
-          SKIP_REASON="${{ env.SKIP_REASON }}"
-          echo "${{ matrix.branch }}|${PUSH_STATUS}|${SKIP_REASON}" > /tmp/branch-result/${{ matrix.branch }}.txt
-          echo "📝 Recorded: ${{ matrix.branch }} -> ${PUSH_STATUS} ${SKIP_REASON}"
-
-      - name: Upload Branch Result Artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: branch-result-${{ matrix.branch }}
-          path: /tmp/branch-result/
-          retention-days: 1
-          if-no-files-found: ignore
-
   notify:
-    needs: optimize-defconfig
+    needs: patch-droidspaces
     if: always()
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Download All Branch Results
-        uses: actions/download-artifact@v4
-        with:
-          path: all-results
-          pattern: branch-result-*
-          merge-multiple: true
-
-      - name: Inspect Downloaded Results
+      - name: Send Telegram Notification (Final Result)
         run: |
-          echo "📂 Hasil unduhan artifact:"
-          ls -la all-results/ || echo "(kosong)"
-
-      - name: Send Telegram Notification (Single Message)
-        run: |
-          RESULT="${{ needs.optimize-defconfig.result }}"
+          RESULT="${{ needs.patch-droidspaces.result }}"
           if [ "$RESULT" == "success" ]; then
             ICON="✅"
-            SUMMARY="All branches fixed successfully"
           elif [ "$RESULT" == "failure" ]; then
             ICON="❌"
-            SUMMARY="One or more branches failed"
           elif [ "$RESULT" == "cancelled" ]; then
             ICON="⚠️"
-            SUMMARY="Workflow cancelled"
           else
             ICON="❓"
-            SUMMARY="Unknown result"
           fi
-
-          BRANCH_LIST=""
-          TOTAL=0
-          OK_COUNT=0
-          FAIL_COUNT=0
-          NOCHANGE_COUNT=0
-          SKIP_COUNT=0
-
-          if [ -d all-results ]; then
-            for f in $(ls all-results/*.txt 2>/dev/null | sort); do
-              [ -f "$f" ] || continue
-              line=$(cat "$f")
-              branch=$(echo "$line" | cut -d'|' -f1)
-              status=$(echo "$line" | cut -d'|' -f2)
-              reason=$(echo "$line" | cut -d'|' -f3)
-
-              case "$status" in
-                UPDATED)   mark="✅"; ok_label="Fixed";          OK_COUNT=$((OK_COUNT+1));;
-                NO_CHANGE) mark="➖"; ok_label="No change";      NOCHANGE_COUNT=$((NOCHANGE_COUNT+1));;
-                SKIPPED)   mark="⏭️"; ok_label="Skipped ($reason)"; SKIP_COUNT=$((SKIP_COUNT+1));;
-                FAILED)    mark="❌"; ok_label="Failed";         FAIL_COUNT=$((FAIL_COUNT+1));;
-                *)         mark="❓"; ok_label="Unknown";;
-              esac
-
-              BRANCH_LIST="${BRANCH_LIST}  ${mark} <code>${branch}</code> — ${ok_label}"$'\n'
-              TOTAL=$((TOTAL+1))
-            done
-          fi
-
-          if [ -z "$BRANCH_LIST" ]; then
-            BRANCH_LIST="  (no branch data)"
-          fi
-
-          MESSAGE=$(cat <<EOF
-          ${ICON} <b>San Kernel Defconfig — FIX Applied</b>
-
-          📱 <b>Device:</b> <code>lavender</code> (SDM660)
-          🌿 <b>Target:</b> <code>EAS 4.4 PELT</code>
-          ⚙️ <b>Overall:</b> <code>${RESULT}</code> — ${SUMMARY}
-          📊 <b>Result:</b> <code>${TOTAL}</code> branches — ✅${OK_COUNT}  ❌${FAIL_COUNT}  ➖${NOCHANGE_COUNT}  ⏭️${SKIP_COUNT}
-
-          <b>━━━ Branches ━━━</b>
-          ${BRANCH_LIST}
-          <b>━━━ Fix Applied ━━━</b>
-          🔧 <code>CONFIG_DEBUG_FS</code> = <b>OFF</b>
-             (resolve msm_bus_dbg.c redefinition error)
-
-          <b>━━━ Kept Tweaks ━━━</b>
-          🧠 <code>SCHED_AUTOGROUP</code> = ON
-          🔍 <code>KALLSYMS</code> = ON
-          💾 <code>KSM</code> = ON
-          🌡️ <code>DEVFREQ_THERMAL</code> = ON
-          🛡️ <code>PANIC_ON_OOPS</code> = OFF
-          ⚡ <code>INPUT_BOOST</code> = 100ms
-          📦 <code>LOG_BUF_SHIFT</code> = 18
-          ⏱️ <code>HUNG_TASK_TIMEOUT</code> = 60s
-          EOF
-          )
-
-          echo "📨 Sending message to Telegram..."
-          HTTP_CODE=$(curl -s -o /tmp/tg_response.txt -w "%{http_code}" \
-            -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
+          MESSAGE=$(printf '%s <b>San Kernel Droidspaces Patch</b>\n\n📱 <b>Device:</b> <code>lavender</code>\n🌿 <b>Target:</b> <code>test</code>\n⚙️ <b>Status:</b> <code>%s</code>\n🔧 <b>Information:</b> <code>Droidspaces Non-GKI Configs & Source Patches Applied</code>' "$ICON" "$RESULT")
+          
+          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
             -F message_thread_id="345" \
             -F parse_mode="HTML" \
-            -F text="$MESSAGE")
-
-          echo "HTTP: $HTTP_CODE"
-          cat /tmp/tg_response.txt
-
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "❌ Telegram send failed"
-            exit 1
-          fi
-          echo "✅ Telegram notification sent successfully"
+            -F text="$MESSAGE"
