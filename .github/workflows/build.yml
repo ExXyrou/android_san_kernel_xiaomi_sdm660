@@ -276,12 +276,15 @@ jobs:
               NETFILTER_XT_MATCH_HASHLIMIT NETFILTER_XT_MATCH_OWNER NETFILTER_XT_MATCH_PKTTYPE
               NETFILTER_XT_MATCH_MARK NETFILTER_XT_TARGET_MARK IP_SET IP_SET_HASH_IP
               IP_SET_HASH_NET NETFILTER_XT_SET NETFILTER_NETLINK_QUEUE NETFILTER_NETLINK_LOG
-              NETFILTER_XT_TARGET_NFLOG TUN
+              NETFILTER_XT_TARGET_NFLOG TUN DUMMY MACVLAN
             )
             
             for conf in "${DS_CONFIGS[@]}"; do
               enable_config "$conf"
             done
+            
+            sed -i 's/# CONFIG_TUN is not set/CONFIG_TUN=y/g' "$OUT_DIR/.config"
+            echo "CONFIG_TUN=y" >> "$OUT_DIR/.config"
             
             disable_config ANDROID_PARANOID_NETWORK
             echo "Droidspaces configs injected successfully."
