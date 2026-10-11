@@ -239,10 +239,12 @@ jobs:
             disable_config CONFIG_KERNEL_GZIP && enable_config CONFIG_KERNEL_XZ
             enable_config CONFIG_RD_XZ
             sed -i 's/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.gz-dtb"/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.xz"/g' "$OUT_DIR/.config"
+            echo "MAKE_TARGET=" >> $GITHUB_ENV
           else
             enable_config CONFIG_KERNEL_GZIP && disable_config CONFIG_KERNEL_XZ
             disable_config CONFIG_RD_XZ
             sed -i 's/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.xz"/CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME="Image.gz-dtb"/g' "$OUT_DIR/.config"
+            echo "MAKE_TARGET=Image.gz-dtb" >> $GITHUB_ENV
           fi
           
           [ "${{ inputs.QTI_HAPTICS }}" == "true" ] && enable_config CONFIG_INPUT_QTI_HAPTICS
@@ -294,6 +296,8 @@ jobs:
           export KBUILD_BUILD_USER="${{ env.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ env.BUILD_HOST }}"
           
+          export KBUILD_BUILD_TIMESTAMP="$(TZ=UTC date)"
+          
           make -j$(nproc --all) O=$OUT_DIR ARCH=${{ env.ARCH }} \
             CC="ccache $GITHUB_WORKSPACE/$CLANG_DIR/bin/clang" \
             HOSTCC="ccache $GITHUB_WORKSPACE/$CLANG_DIR/bin/clang" \
@@ -306,7 +310,8 @@ jobs:
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-address -Wno-implicit-function-declaration" 2>&1 | tee build.log
+            KCFLAGS="-Wno-address -Wno-implicit-function-declaration" \
+            ${{ env.MAKE_TARGET }} 2>&1 | tee build.log
             
           if ! find "$OUT_DIR/arch/arm64/boot" -maxdepth 1 -name "Image*" | grep -q .; then
             echo "Error: Kernel output image not found!"
@@ -332,7 +337,7 @@ jobs:
           else
             BRANCH_NAME="original"
             OUTPUT_NAME="Image.gz-dtb"
-            IMAGE=$(find "$PWD/$OUT_DIR/arch/arm64/boot" -type f \( -name "Image.gz-dtb" -o -name "Image" \) | head -n1)
+            IMAGE=$(find "$PWD/$OUT_DIR/arch/arm64/boot" -name "Image.gz-dtb" 2>/dev/null | head -n1)
             cp "$IMAGE" "$GITHUB_WORKSPACE/$OUTPUT_NAME"
           fi
           
