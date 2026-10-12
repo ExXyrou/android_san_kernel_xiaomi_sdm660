@@ -38,6 +38,9 @@ jobs:
         run: |
           DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
           echo "Editing $DEFCONFIG_FILE..."
+          
+          chmod +x ./scripts/config
+          
           enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
           disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
           set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
@@ -103,7 +106,7 @@ jobs:
           echo "All optimization configs applied to $DEFCONFIG_FILE"
           echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
 
-      - name: Commit & Push Defconfig (with retry + rebase)
+      - name: Commit & Push Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           git config user.name "${{ secrets.GH_USERNAME }}"
@@ -114,9 +117,12 @@ jobs:
             echo "No changes detected in defconfig."
             exit 0
           fi
+          
           git add "${{ env.DEFCONFIG_REL_PATH }}"
           git commit -m "config: [Optimize] defconfig for lavender (${{ matrix.branch }})"
+          
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+          
           MAX_RETRY=5
           for i in $(seq 1 $MAX_RETRY); do
             echo "Push attempt $i/$MAX_RETRY..."
@@ -142,7 +148,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Send Telegram Notification (Final Result)
+      - name: Send Telegram Notification
         run: |
           RESULT="${{ needs.optimize-defconfig.result }}"
           if [ "$RESULT" == "success" ]; then
@@ -156,30 +162,30 @@ jobs:
           fi
 
           MESSAGE=$(cat <<EOF
-${ICON} <b>San Kernel Defconfig Optimization</b>
+          ${ICON} <b>San Kernel Defconfig Optimization</b>
 
-📱 <b>Device:</b> <code>lavender</code>
-🌿 <b>Target:</b> <code>EAS 4.4 SDM660 (CAF)</code>
-🎯 <b>Focus:</b> <code>Gaming + Daily (Stable)</code>
-⚙️ <b>Status:</b> <code>${RESULT}</code>
+          📱 <b>Device:</b> <code>lavender</code>
+          🌿 <b>Target:</b> <code>EAS 4.4 SDM660 (CAF)</code>
+          🎯 <b>Focus:</b> <code>Gaming + Daily (Stable)</code>
+          ⚙️ <b>Status:</b> <code>${RESULT}</code>
 
-📝 <b>Changelog:</b>
-• <b>CPU Governor:</b> only <code>schedutil</code> (default) + <code>performance</code>
-• <b>Removed:</b> <code>powersave</code>, <code>userspace</code>, <code>ondemand</code>, <code>conservative</code>
-• <b>EAS:</b> <code>SCHED_TUNE</code>, <code>CGROUP_SCHEDTUNE</code>, <code>STUNE_ASSIST</code>, <code>DYNAMIC_STUNE_BOOST</code> enabled
-• <b>WALT:</b> <code>disabled</code> (pure EAS)
-• <b>CPU Boost:</b> <code>enabled</code>
-• <b>Preempt:</b> <code>enabled</code> (low latency)
-• <b>I/O:</b> <code>CFQ</code> default, <code>BFQ</code>/<code>FIOPS</code> available as options
-• <b>Network:</b> <code>fq_codel</code> + TCP <code>westwood</code>
-• <b>Memory:</b> <code>ZRAM</code> + <code>ZSMALLOC</code> + <code>LZ4</code>
-• <b>GPU/DEVFREQ:</b> <code>msm-adreno-tz</code> + input/wake boost enabled
-• <b>Thermal:</b> <code>step_wise</code> (safe, non-aggressive)
+          📝 <b>Changelog:</b>
+          - <b>CPU Governor:</b> only <code>schedutil</code> (default) + <code>performance</code>
+          - <b>Removed:</b> <code>powersave</code>, <code>userspace</code>, <code>ondemand</code>, <code>conservative</code>
+          - <b>EAS:</b> <code>SCHED_TUNE</code>, <code>CGROUP_SCHEDTUNE</code>, <code>STUNE_ASSIST</code>, <code>DYNAMIC_STUNE_BOOST</code> enabled
+          - <b>WALT:</b> <code>disabled</code> (pure EAS)
+          - <b>CPU Boost:</b> <code>enabled</code>
+          - <b>Preempt:</b> <code>enabled</code> (low latency)
+          - <b>I/O:</b> <code>CFQ</code> default, <code>BFQ</code>/<code>FIOPS</code> available as options
+          - <b>Network:</b> <code>fq_codel</code> + TCP <code>westwood</code>
+          - <b>Memory:</b> <code>ZRAM</code> + <code>ZSMALLOC</code> + <code>LZ4</code>
+          - <b>GPU/DEVFREQ:</b> <code>msm-adreno-tz</code> + input/wake boost enabled
+          - <b>Thermal:</b> <code>step_wise</code> (safe, non-aggressive)
 
-🔒 <b>Stability:</b> <code>Low-risk tweaks only, no aggressive overrides</code>
-💡 <b>Note:</b> Advanced tuning (schedutil rate-limit, schedtune boost, LMK, I/O tunable) handled via Magisk module.
-EOF
-)
+          🔒 <b>Stability:</b> <code>Low-risk tweaks only, no aggressive overrides</code>
+          💡 <b>Note:</b> Advanced tuning handled via Magisk module.
+          EOF
+          )
 
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
