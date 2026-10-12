@@ -1,0 +1,188 @@
+name: 🛠️ Push Defconfig (Lavender)
+
+on:
+  workflow_dispatch:
+
+env:
+  KERNEL_DIR: kernel_source
+  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
+  TELEGRAM_GROUP_ID: -1004324974450
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
+jobs:
+  optimize-defconfig:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [original-stable, kernelsu-next, resukisu, susfs]
+
+    steps:
+      - name: Initialize Workflow
+        run: echo "Starting defconfig update for lavender on branch ${{ matrix.branch }}..."
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ExXyrou/android_san_kernel_xiaomi_sdm660
+          ref: ${{ matrix.branch }}
+          token: ${{ secrets.GH_PAT }}
+          path: ${{ env.KERNEL_DIR }}
+          fetch-depth: 0
+          submodules: false
+
+      - name: Edit Defconfig
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
+          echo "Editing $DEFCONFIG_FILE..."
+          enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
+          disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
+          set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
+          set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
+
+          echo "Applying Performance & Stability Tweaks for SDM660..."
+
+          disable_config CONFIG_CPU_FREQ_GOV_POWERSAVE
+          disable_config CONFIG_CPU_FREQ_GOV_USERSPACE
+          disable_config CONFIG_CPU_FREQ_GOV_ONDEMAND
+          disable_config CONFIG_CPU_FREQ_GOV_CONSERVATIVE
+          disable_config CONFIG_CPU_FREQ_GOV_INTERACTIVE
+
+          enable_config  CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
+          enable_config  CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+          enable_config  CONFIG_CPU_FREQ_GOV_PERFORMANCE
+          enable_config  CONFIG_CPU_FREQ_TIMES
+
+          enable_config  CONFIG_SCHED_TUNE
+          enable_config  CONFIG_CGROUP_SCHEDTUNE
+          enable_config  CONFIG_STUNE_ASSIST
+          enable_config  CONFIG_DYNAMIC_STUNE_BOOST
+          enable_config  CONFIG_DEFAULT_USE_ENERGY_AWARE
+          disable_config CONFIG_SCHED_WALT
+          enable_config  CONFIG_CPU_BOOST
+          enable_config  CONFIG_PREEMPT
+          enable_config  CONFIG_SCHED_HRTICK
+
+          enable_config  CONFIG_DEVFREQ_BOOST
+          enable_config  CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ
+          enable_config  CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND
+          set_val        CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS 64
+          set_val        CONFIG_DEVFREQ_WAKE_BOOST_DURATION_MS 1000
+
+          enable_config  CONFIG_IOSCHED_CFQ
+          enable_config  CONFIG_IOSCHED_BFQ
+          enable_config  CONFIG_IOSCHED_FIOPS
+          enable_config  CONFIG_IOSCHED_DEADLINE
+          enable_config  CONFIG_DEFAULT_CFQ
+          set_str        CONFIG_DEFAULT_IOSCHED "cfq"
+
+          enable_config  CONFIG_NET_SCHED
+          enable_config  CONFIG_NET_SCH_FQ_CODEL
+          enable_config  CONFIG_DEFAULT_FQ_CODEL
+          set_str        CONFIG_DEFAULT_NET_SCH "fq_codel"
+          enable_config  CONFIG_TCP_CONG_WESTWOOD
+          enable_config  CONFIG_DEFAULT_WESTWOOD
+          set_str        CONFIG_DEFAULT_TCP_CONG "westwood"
+
+          enable_config  CONFIG_ZRAM
+          enable_config  CONFIG_ZSMALLOC
+          enable_config  CONFIG_CRYPTO_LZ4
+          enable_config  CONFIG_LZ4_COMPRESS
+          enable_config  CONFIG_LZ4_DECOMPRESS
+          enable_config  CONFIG_COMPACTION
+          enable_config  CONFIG_MIGRATION
+
+          enable_config  CONFIG_THERMAL
+          enable_config  CONFIG_THERMAL_DEFAULT_GOV_STEP_WISE
+          enable_config  CONFIG_CPU_THERMAL
+          enable_config  CONFIG_THERMAL_WRITABLE_TRIPS
+
+          echo "All optimization configs applied to $DEFCONFIG_FILE"
+          echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
+
+      - name: Commit & Push Defconfig (with retry + rebase)
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          git config user.name "${{ secrets.GH_USERNAME }}"
+          git config user.email "${{ secrets.GH_EMAIL }}"
+          git rm -r --cached KernelSU || true
+
+          if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
+            echo "No changes detected in defconfig."
+            exit 0
+          fi
+          git add "${{ env.DEFCONFIG_REL_PATH }}"
+          git commit -m "config: [Optimize] defconfig for lavender (${{ matrix.branch }})"
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+          MAX_RETRY=5
+          for i in $(seq 1 $MAX_RETRY); do
+            echo "Push attempt $i/$MAX_RETRY..."
+            if git push origin HEAD:${{ matrix.branch }}; then
+              echo "Push success on attempt $i"
+              exit 0
+            fi
+            echo "Push rejected, fetching & rebasing..."
+            git fetch origin ${{ matrix.branch }}
+            git rebase origin/${{ matrix.branch }} || {
+              echo "Rebase conflict, aborting"
+              git rebase --abort
+              git pull --rebase -X theirs origin ${{ matrix.branch }}
+            }
+            sleep 5
+          done
+          echo "Push failed after $MAX_RETRY attempts"
+          exit 1
+
+  notify:
+    needs: optimize-defconfig
+    if: always()
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Send Telegram Notification (Final Result)
+        run: |
+          RESULT="${{ needs.optimize-defconfig.result }}"
+          if [ "$RESULT" == "success" ]; then
+            ICON="✅"
+          elif [ "$RESULT" == "failure" ]; then
+            ICON="❌"
+          elif [ "$RESULT" == "cancelled" ]; then
+            ICON="⚠️"
+          else
+            ICON="❓"
+          fi
+
+          MESSAGE=$(cat <<EOF
+${ICON} <b>San Kernel Defconfig Optimization</b>
+
+📱 <b>Device:</b> <code>lavender</code>
+🌿 <b>Target:</b> <code>EAS 4.4 SDM660 (CAF)</code>
+🎯 <b>Focus:</b> <code>Gaming + Daily (Stable)</code>
+⚙️ <b>Status:</b> <code>${RESULT}</code>
+
+📝 <b>Changelog:</b>
+• <b>CPU Governor:</b> only <code>schedutil</code> (default) + <code>performance</code>
+• <b>Removed:</b> <code>powersave</code>, <code>userspace</code>, <code>ondemand</code>, <code>conservative</code>
+• <b>EAS:</b> <code>SCHED_TUNE</code>, <code>CGROUP_SCHEDTUNE</code>, <code>STUNE_ASSIST</code>, <code>DYNAMIC_STUNE_BOOST</code> enabled
+• <b>WALT:</b> <code>disabled</code> (pure EAS)
+• <b>CPU Boost:</b> <code>enabled</code>
+• <b>Preempt:</b> <code>enabled</code> (low latency)
+• <b>I/O:</b> <code>CFQ</code> default, <code>BFQ</code>/<code>FIOPS</code> available as options
+• <b>Network:</b> <code>fq_codel</code> + TCP <code>westwood</code>
+• <b>Memory:</b> <code>ZRAM</code> + <code>ZSMALLOC</code> + <code>LZ4</code>
+• <b>GPU/DEVFREQ:</b> <code>msm-adreno-tz</code> + input/wake boost enabled
+• <b>Thermal:</b> <code>step_wise</code> (safe, non-aggressive)
+
+🔒 <b>Stability:</b> <code>Low-risk tweaks only, no aggressive overrides</code>
+💡 <b>Note:</b> Advanced tuning (schedutil rate-limit, schedtune boost, LMK, I/O tunable) handled via Magisk module.
+EOF
+)
+
+          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
+            -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+            -F message_thread_id="345" \
+            -F parse_mode="HTML" \
+            -F text="$MESSAGE"
