@@ -1,4 +1,4 @@
-name: 🛠️ Tes Build Kernel
+name: 🛠️ Build Kernel
 
 on:
   workflow_dispatch:
@@ -18,10 +18,8 @@ on:
         type: choice
         options:
           - PLTS
-          - st74
           - st78
-          - ksun-33024
-          - ksun-33068
+          - kernelsu-next
           - resukisu
           - susfs
       LOCALVERSION:
@@ -155,6 +153,8 @@ jobs:
 
       - name: Download & Setup Clang Toolchain
         if: steps.clang-cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           rm -rf "$CLANG_DIR"
           mkdir -p "$CLANG_DIR"
@@ -162,17 +162,35 @@ jobs:
           case "${{ inputs.COMPILER }}" in
             neutron)
               echo "Downloading Neutron Clang 17 (recommended for 4.4 SDM660)..."
-              NEUTRON_URL=$(curl -s https://api.github.com/repos/Neutron-Toolchains/clang-build-catalogue/releases | \
-                grep "browser_download_url" | grep -E "neutron-clang-17.*\.tar\.(zst|gz|xz)$" | cut -d '"' -f 4 | head -n 1)
-              if [ -z "$NEUTRON_URL" ]; then
-                # Fallback: any latest archive
-                NEUTRON_URL=$(curl -s https://api.github.com/repos/Neutron-Toolchains/clang-build-catalogue/releases | \
-                  grep "browser_download_url" | grep -E "\.tar\.(zst|gz|xz)$" | grep -v "\.sha" | cut -d '"' -f 4 | head -n 1)
-              fi
-              if [ -z "$NEUTRON_URL" ]; then
-                echo "Error: Neutron Clang URL not found!"
+
+              NEUTRON_JSON=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+                "https://api.github.com/repos/Neutron-Toolchains/clang-build-catalogue/releases?per_page=100")
+
+              if echo "$NEUTRON_JSON" | grep -q '"message".*[Rr]ate limit'; then
+                echo "GitHub API rate limited. Debug:"
+                echo "$NEUTRON_JSON" | head -n 20
                 exit 1
               fi
+
+              NEUTRON_URL=$(echo "$NEUTRON_JSON" | grep "browser_download_url" | \
+                grep -E "neutron-clang-17.*\.tar\.(zst|gz|xz)" | \
+                grep -v "\.sha" | cut -d '"' -f 4 | head -n 1)
+
+              if [ -z "$NEUTRON_URL" ]; then
+                echo "neutron-clang-17 not found, trying other neutron-clang versions..."
+                NEUTRON_URL=$(echo "$NEUTRON_JSON" | grep "browser_download_url" | \
+                  grep -E "neutron-clang-.*\.tar\.(zst|gz|xz)" | \
+                  grep -v "\.sha" | cut -d '"' -f 4 | head -n 1)
+              fi
+
+              if [ -z "$NEUTRON_URL" ]; then
+                echo "Failed to find Neutron Clang URL."
+                echo "Debug - available assets:"
+                echo "$NEUTRON_JSON" | grep "browser_download_url" | head -n 20
+                exit 1
+              fi
+
+              echo "Neutron URL: $NEUTRON_URL"
               EXT="${NEUTRON_URL##*.}"
               curl -LSs "$NEUTRON_URL" -o "neutron.tar.${EXT}"
               case "$EXT" in
@@ -181,6 +199,7 @@ jobs:
                 xz)  tar -Jxf "neutron.tar.xz"  -C "$CLANG_DIR" --strip-components=1 ;;
               esac
               rm -f "neutron.tar.${EXT}"
+
               if [ ! -d "$CLANG_DIR/bin" ]; then
                 CLANG_SUBDIR=$(find "$CLANG_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
                 [ -n "$CLANG_SUBDIR" ] && mv "$CLANG_SUBDIR"/* "$CLANG_DIR/" && rmdir "$CLANG_SUBDIR"
@@ -188,7 +207,7 @@ jobs:
               echo "CLANG_DISPLAY_VERSION=Neutron Clang 17 (LLVM 17)" >> $GITHUB_ENV
               ;;
             proton)
-              echo "Cloning Proton Clang (best for 4.4)..."
+              echo "Cloning Proton Clang..."
               rm -rf "$CLANG_DIR"
               git clone --depth=1 https://github.com/kdrag0n/proton-clang.git "$CLANG_DIR"
               echo "CLANG_DISPLAY_VERSION=Proton Clang 13.0.0" >> $GITHUB_ENV
@@ -201,7 +220,7 @@ jobs:
               ;;
             weebx)
               echo "Downloading WeebX Clang..."
-              WEEBX_URL=$(curl -s https://api.github.com/repos/XSans0/WeebX-Clang/releases/latest | grep "browser_download_url" | grep -E "\.tar\.(gz|xz)" | cut -d '"' -f 4 | head -n 1)
+              WEEBX_URL=$(curl -s -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/XSans0/WeebX-Clang/releases/latest | grep "browser_download_url" | grep -E "\.tar\.(gz|xz)" | grep -v "\.sha" | cut -d '"' -f 4 | head -n 1)
               if [ -z "$WEEBX_URL" ]; then
                 echo "Error: WeebX Clang URL not found!"
                 exit 1
@@ -233,18 +252,16 @@ jobs:
             esac
           fi
 
-      # Pilih objcopy/strip sesuai compiler.
-      # Hanya AOSP (LLVM 12) yang kena bug ".rela.dyn is not a symbol table" di kernel 4.4.
       - name: Select Objcopy & Strip Tools
         run: |
           if [ "${{ inputs.COMPILER }}" == "aosp" ]; then
             echo "OBJCOPY_BIN=aarch64-linux-gnu-objcopy" >> $GITHUB_ENV
             echo "STRIP_BIN=aarch64-linux-gnu-strip" >> $GITHUB_ENV
-            echo "ℹ️  AOSP Clang (LLVM 12) detected → menggunakan GNU objcopy/strip (workaround bug .rela.dyn)"
+            echo "AOSP Clang (LLVM 12) detected -> using GNU objcopy/strip workaround"
           else
             echo "OBJCOPY_BIN=$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-objcopy" >> $GITHUB_ENV
             echo "STRIP_BIN=$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-strip" >> $GITHUB_ENV
-            echo "ℹ️  ${{ inputs.COMPILER }} Clang detected → menggunakan llvm-objcopy/llvm-strip"
+            echo "${{ inputs.COMPILER }} Clang detected -> using llvm-objcopy/llvm-strip"
           fi
 
       - name: Prepare Configs & Build Options
@@ -303,8 +320,6 @@ jobs:
           export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           export KBUILD_BUILD_USER="${{ env.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ env.BUILD_HOST }}"
-
-          # Timestamp diambil saat build, format UTC eksplisit
           export KBUILD_BUILD_TIMESTAMP="${{ env.BUILD_TIMESTAMP }}"
 
           make -j$(nproc --all) O=$OUT_DIR ARCH=${{ env.ARCH }} \
@@ -375,10 +390,7 @@ jobs:
           mkdir -p ksu_managers
           HAS_KSU=false
 
-          if [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33024" ]; then
-            gh release download ksun-33024 -R ExXyrou/KernelSU_Manager -p "*.apk" -D ksu_managers
-            HAS_KSU=true
-          elif [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33068" ]; then
+          if [ "${{ inputs.KERNEL_BRANCH }}" == "kernelsu-next" ]; then
             gh release download ksun-33068 -R ExXyrou/KernelSU_Manager -p "*.apk" -D ksu_managers
             HAS_KSU=true
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu" ]; then
@@ -407,10 +419,8 @@ jobs:
           CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           AROMA_TEXT=$([ "${{ inputs.ADD_AROMA_INSTALLER }}" == "true" ] && echo "yes" || echo "none")
 
-          if [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33024" ]; then
-            KSU_TEXT='<code>ksun-33024</code>'
-          elif [ "${{ inputs.KERNEL_BRANCH }}" == "ksun-33068" ]; then
-            KSU_TEXT='<code>ksun-33068</code>'
+          if [ "${{ inputs.KERNEL_BRANCH }}" == "kernelsu-next" ]; then
+            KSU_TEXT='<code>kernelsu-next</code>'
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu" ]; then
             KSU_TEXT='<code>resukisu</code>'
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "susfs" ]; then
