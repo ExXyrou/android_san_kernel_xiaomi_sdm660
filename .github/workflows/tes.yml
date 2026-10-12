@@ -51,9 +51,10 @@ on:
       COMPILER:
         description: '🛠️ Select Compiler'
         required: true
-        default: 'proton'
+        default: 'neutron'
         type: choice
         options:
+          - neutron
           - proton
           - aosp
           - weebx
@@ -129,7 +130,7 @@ jobs:
           for i in 1 2 3; do sudo apt-get update -yq && break; sleep 10; done
           sudo apt-get install -yq --no-install-recommends \
             -o Acquire::Retries=3 \
-            bc bison libssl-dev libelf-dev build-essential python3 python3-pip curl git zip unzip wget ccache libncurses-dev rsync gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi xz-utils
+            bc bison libssl-dev libelf-dev build-essential python3 python3-pip curl git zip unzip wget ccache libncurses-dev rsync gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi xz-utils zstd
 
       - name: Setup Compiler Cache
         uses: actions/cache@v4
@@ -150,7 +151,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.CLANG_DIR }}
-          key: clang-${{ inputs.COMPILER }}-v2-${{ hashFiles('.github/workflows/*.yml') }}
+          key: clang-${{ inputs.COMPILER }}-v3-${{ hashFiles('.github/workflows/*.yml') }}
 
       - name: Download & Setup Clang Toolchain
         if: steps.clang-cache.outputs.cache-hit != 'true'
@@ -159,6 +160,33 @@ jobs:
           mkdir -p "$CLANG_DIR"
 
           case "${{ inputs.COMPILER }}" in
+            neutron)
+              echo "Downloading Neutron Clang 17 (recommended for 4.4 SDM660)..."
+              NEUTRON_URL=$(curl -s https://api.github.com/repos/Neutron-Toolchains/clang-build-catalogue/releases | \
+                grep "browser_download_url" | grep -E "neutron-clang-17.*\.tar\.(zst|gz|xz)$" | cut -d '"' -f 4 | head -n 1)
+              if [ -z "$NEUTRON_URL" ]; then
+                # Fallback: any latest archive
+                NEUTRON_URL=$(curl -s https://api.github.com/repos/Neutron-Toolchains/clang-build-catalogue/releases | \
+                  grep "browser_download_url" | grep -E "\.tar\.(zst|gz|xz)$" | grep -v "\.sha" | cut -d '"' -f 4 | head -n 1)
+              fi
+              if [ -z "$NEUTRON_URL" ]; then
+                echo "Error: Neutron Clang URL not found!"
+                exit 1
+              fi
+              EXT="${NEUTRON_URL##*.}"
+              curl -LSs "$NEUTRON_URL" -o "neutron.tar.${EXT}"
+              case "$EXT" in
+                zst) tar --use-compress-program=unzstd -xf "neutron.tar.zst" -C "$CLANG_DIR" --strip-components=1 ;;
+                gz)  tar -zxf "neutron.tar.gz"  -C "$CLANG_DIR" --strip-components=1 ;;
+                xz)  tar -Jxf "neutron.tar.xz"  -C "$CLANG_DIR" --strip-components=1 ;;
+              esac
+              rm -f "neutron.tar.${EXT}"
+              if [ ! -d "$CLANG_DIR/bin" ]; then
+                CLANG_SUBDIR=$(find "$CLANG_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+                [ -n "$CLANG_SUBDIR" ] && mv "$CLANG_SUBDIR"/* "$CLANG_DIR/" && rmdir "$CLANG_SUBDIR"
+              fi
+              echo "CLANG_DISPLAY_VERSION=Neutron Clang 17 (LLVM 17)" >> $GITHUB_ENV
+              ;;
             proton)
               echo "Cloning Proton Clang (best for 4.4)..."
               rm -rf "$CLANG_DIR"
@@ -198,10 +226,25 @@ jobs:
         run: |
           if [ -z "${{ env.CLANG_DISPLAY_VERSION }}" ]; then
             case "${{ inputs.COMPILER }}" in
-              proton) echo "CLANG_DISPLAY_VERSION=Proton Clang 13.0.0" >> $GITHUB_ENV ;;
-              aosp)   echo "CLANG_DISPLAY_VERSION=AOSP Clang 12.0.5" >> $GITHUB_ENV ;;
-              weebx)  echo "CLANG_DISPLAY_VERSION=WeebX Clang" >> $GITHUB_ENV ;;
+              neutron) echo "CLANG_DISPLAY_VERSION=Neutron Clang 17 (LLVM 17)" >> $GITHUB_ENV ;;
+              proton)  echo "CLANG_DISPLAY_VERSION=Proton Clang 13.0.0" >> $GITHUB_ENV ;;
+              aosp)    echo "CLANG_DISPLAY_VERSION=AOSP Clang 12.0.5" >> $GITHUB_ENV ;;
+              weebx)   echo "CLANG_DISPLAY_VERSION=WeebX Clang" >> $GITHUB_ENV ;;
             esac
+          fi
+
+      # Pilih objcopy/strip sesuai compiler.
+      # Hanya AOSP (LLVM 12) yang kena bug ".rela.dyn is not a symbol table" di kernel 4.4.
+      - name: Select Objcopy & Strip Tools
+        run: |
+          if [ "${{ inputs.COMPILER }}" == "aosp" ]; then
+            echo "OBJCOPY_BIN=aarch64-linux-gnu-objcopy" >> $GITHUB_ENV
+            echo "STRIP_BIN=aarch64-linux-gnu-strip" >> $GITHUB_ENV
+            echo "ℹ️  AOSP Clang (LLVM 12) detected → menggunakan GNU objcopy/strip (workaround bug .rela.dyn)"
+          else
+            echo "OBJCOPY_BIN=$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-objcopy" >> $GITHUB_ENV
+            echo "STRIP_BIN=$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-strip" >> $GITHUB_ENV
+            echo "ℹ️  ${{ inputs.COMPILER }} Clang detected → menggunakan llvm-objcopy/llvm-strip"
           fi
 
       - name: Prepare Configs & Build Options
@@ -270,9 +313,9 @@ jobs:
             HOSTCXX="ccache $GITHUB_WORKSPACE/$CLANG_DIR/bin/clang++" \
             AR="$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-ar" \
             NM="$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-nm" \
-            OBJCOPY="$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-objcopy" \
+            OBJCOPY="${{ env.OBJCOPY_BIN }}" \
             OBJDUMP="$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-objdump" \
-            STRIP="$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-strip" \
+            STRIP="${{ env.STRIP_BIN }}" \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
