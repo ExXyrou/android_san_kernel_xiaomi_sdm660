@@ -1,0 +1,4 @@
+=== Branch: susfs ===
+Deleted: san-kernel
+Modified: Makefile (Cleared EXTRAVERSION)
+
