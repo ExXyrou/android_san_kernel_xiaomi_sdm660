@@ -203,7 +203,7 @@ jobs:
                 CLANG_SUBDIR=$(find "$CLANG_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
                 [ -n "$CLANG_SUBDIR" ] && mv "$CLANG_SUBDIR"/* "$CLANG_DIR/" && rmdir "$CLANG_SUBDIR"
               fi
-              echo "CLANG_DISPLAY_VERSION=Neutron Clang 17 (LLVM 17)" >> $GITHUB_ENV
+              echo "CLANG_DISPLAY_VERSION=Neutron Clang 17" >> $GITHUB_ENV
               ;;
             proton)
               echo "Cloning Proton Clang..."
@@ -244,7 +244,7 @@ jobs:
         run: |
           if [ -z "${{ env.CLANG_DISPLAY_VERSION }}" ]; then
             case "${{ inputs.COMPILER }}" in
-              neutron) echo "CLANG_DISPLAY_VERSION=Neutron Clang 17 (LLVM 17)" >> $GITHUB_ENV ;;
+              neutron) echo "CLANG_DISPLAY_VERSION=Neutron Clang 17" >> $GITHUB_ENV ;;
               proton)  echo "CLANG_DISPLAY_VERSION=Proton Clang 13.0.0" >> $GITHUB_ENV ;;
               aosp)    echo "CLANG_DISPLAY_VERSION=AOSP Clang 12.0.5" >> $GITHUB_ENV ;;
               weebx)   echo "CLANG_DISPLAY_VERSION=WeebX Clang" >> $GITHUB_ENV ;;
@@ -256,7 +256,7 @@ jobs:
           if [ "${{ inputs.COMPILER }}" == "aosp" ]; then
             echo "OBJCOPY_BIN=aarch64-linux-gnu-objcopy" >> $GITHUB_ENV
             echo "STRIP_BIN=aarch64-linux-gnu-strip" >> $GITHUB_ENV
-            echo "AOSP Clang (LLVM 12) detected -> using GNU objcopy/strip workaround"
+            echo "AOSP Clang detected -> using GNU objcopy/strip workaround"
           else
             echo "OBJCOPY_BIN=$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-objcopy" >> $GITHUB_ENV
             echo "STRIP_BIN=$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-strip" >> $GITHUB_ENV
