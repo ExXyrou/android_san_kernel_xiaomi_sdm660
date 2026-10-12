@@ -1,0 +1,3 @@
+=== Branch: kernelsu-next ===
+Deleted: localversion-st
+
