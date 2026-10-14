@@ -1,4 +1,4 @@
-name: 🔧 Sync BakaSU Manual Hook (resukisu → bakasu)
+name: 🔧 Replace BakaSU Files (resukisu → bakasu)
 
 on:
   workflow_dispatch:
@@ -14,15 +14,18 @@ env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
 jobs:
-  sync-manual-hook:
+  replace-files:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
 
     steps:
       - name: Initialize
-        run: echo "Sync manual hook + defconfig from $SOURCE_BRANCH → $TARGET_BRANCH"
+        run: echo "Replace files from $SOURCE_BRANCH → $TARGET_BRANCH"
 
+      # ------------------------------------------------------------------
+      # 1. Checkout TARGET branch (bakasu)
+      # ------------------------------------------------------------------
       - name: Checkout Target Branch (bakasu)
         uses: actions/checkout@v4
         with:
@@ -33,6 +36,9 @@ jobs:
           fetch-depth: 0
           submodules: false
 
+      # ------------------------------------------------------------------
+      # 2. Fetch SOURCE branch (resukisu)
+      # ------------------------------------------------------------------
       - name: Fetch Source Branch (resukisu)
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
@@ -41,7 +47,10 @@ jobs:
           git branch -f resukisu-src origin/${{ env.SOURCE_BRANCH }}
           echo "✅ Fetched resukisu-src"
 
-      - name: Copy Manual Hook Files + Defconfig from resukisu
+      # ------------------------------------------------------------------
+      # 3. Replace 11 file manual hook + defconfig dari resukisu
+      # ------------------------------------------------------------------
+      - name: Replace Files from resukisu
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           FILES=(
@@ -70,29 +79,25 @@ jobs:
           echo "----- DIFF STAT -----"
           git diff --cached --stat || true
 
-      - name: Setup BakaSU (curl setup.sh)
-        working-directory: ${{ env.KERNEL_DIR }}
-        run: |
-          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash
-
+      # ------------------------------------------------------------------
+      # 4. Commit & Push (retry + rebase)
+      # ------------------------------------------------------------------
       - name: Commit & Push (retry + rebase)
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           git config user.name  "${{ secrets.GH_USERNAME }}"
           git config user.email "${{ secrets.GH_EMAIL }}"
 
-          # hapus submodule KernelSU kalau nyangkut di cache
-          git rm -r --cached KernelSU 2>/dev/null || true
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ env.REPO }}.git
 
-          if git diff --cached --quiet && git diff --quiet; then
+          git add -A
+
+          if git diff --cached --quiet; then
             echo "ℹ️ No changes to commit."
             exit 0
           fi
 
-          git add -A
-          git commit -m "manual-hook: sync from resukisu + BakaSU setup (bakasu)"
-
-          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ env.REPO }}.git
+          git commit -m "replace: sync files from resukisu (bakasu)"
 
           MAX_RETRY=5
           for i in $(seq 1 $MAX_RETRY); do
@@ -114,20 +119,20 @@ jobs:
           exit 1
 
   notify:
-    needs: sync-manual-hook
+    needs: replace-files
     if: always()
     runs-on: ubuntu-22.04
     steps:
       - name: Send Telegram Notification
         run: |
-          RESULT="${{ needs.sync-manual-hook.result }}"
+          RESULT="${{ needs.replace-files.result }}"
           case "$RESULT" in
             success)   ICON="✅" ;;
             failure)   ICON="❌" ;;
             cancelled) ICON="⚠️" ;;
             *)         ICON="❓" ;;
           esac
-          MESSAGE=$(printf '%s <b>BakaSU Manual Hook Sync</b>\n\n📱 <b>Device:</b> <code>lavender</code>\n📥 <b>From:</b> <code>resukisu</code>\n📤 <b>To:</b> <code>bakasu</code>\n⚙️ <b>Status:</b> <code>%s</code>\n🔧 <b>Info:</b> <code>manual-hook + defconfig + BakaSU setup</code>' "$ICON" "$RESULT")
+          MESSAGE=$(printf '%s <b>BakaSU File Replace</b>\n\n📱 <b>Device:</b> <code>lavender</code>\n📥 <b>From:</b> <code>resukisu</code>\n📤 <b>To:</b> <code>bakasu</code>\n🧩 <b>Mode:</b> <code>replace files only</code>\n⚙️ <b>Status:</b> <code>%s</code>' "$ICON" "$RESULT")
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
             -F message_thread_id="345" \
