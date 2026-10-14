@@ -18,6 +18,7 @@ on:
         type: choice
         options:
           - original-stable
+          - bakasu
           - kernelsu-next
           - resukisu
           - susfs
