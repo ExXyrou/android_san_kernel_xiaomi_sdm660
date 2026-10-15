@@ -102,13 +102,11 @@ jobs:
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           CLEAN_INPUT=$(echo "${{ inputs.LOCALVERSION }}" | sed 's/^-//')
-
           if [ -n "$CLEAN_INPUT" ]; then
             FINAL_LOCAL="-${CLEAN_INPUT}"
           else
             FINAL_LOCAL=""
           fi
-
           echo "KERNEL_NAME_STRING=$FINAL_LOCAL" >> $GITHUB_ENV
           KVER_MAJOR=$(grep -m1 '^VERSION =' Makefile | tr -d ' ' | cut -d'=' -f2)
           KVER_PATCH=$(grep -m1 '^PATCHLEVEL =' Makefile | tr -d ' ' | cut -d'=' -f2)
@@ -155,18 +153,14 @@ jobs:
         run: |
           rm -rf "$CLANG_DIR"
           mkdir -p "$CLANG_DIR"
-
           case "${{ inputs.COMPILER }}" in
             neutron)
               NEUTRON_JSON=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/Neutron-Toolchains/clang-build-catalogue/releases?per_page=100")
               NEUTRON_URL=$(echo "$NEUTRON_JSON" | grep "browser_download_url" | grep -E "neutron-clang-17.*\.tar\.(zst|gz|xz)" | grep -v "\.sha" | cut -d '"' -f 4 | head -n 1)
-              
               if [ -z "$NEUTRON_URL" ]; then
                 NEUTRON_URL=$(echo "$NEUTRON_JSON" | grep "browser_download_url" | grep -E "neutron-clang-.*\.tar\.(zst|gz|xz)" | grep -v "\.sha" | cut -d '"' -f 4 | head -n 1)
               fi
-              
               if [ -z "$NEUTRON_URL" ]; then exit 1; fi
-
               EXT="${NEUTRON_URL##*.}"
               curl -LSs "$NEUTRON_URL" -o "neutron.tar.${EXT}"
               case "$EXT" in
@@ -175,7 +169,6 @@ jobs:
                 xz)  tar -Jxf "neutron.tar.xz"  -C "$CLANG_DIR" --strip-components=1 ;;
               esac
               rm -f "neutron.tar.${EXT}"
-
               if [ ! -d "$CLANG_DIR/bin" ]; then
                 CLANG_SUBDIR=$(find "$CLANG_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)
                 [ -n "$CLANG_SUBDIR" ] && mv "$CLANG_SUBDIR"/* "$CLANG_DIR/" && rmdir "$CLANG_SUBDIR"
@@ -236,13 +229,11 @@ jobs:
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           [ -f kernel/sched/sched.h ] && sed -i 's/cpu_rq(cpu)->cfs->cumulative_runnable_avg/cpu_rq(cpu)->cfs.cumulative_runnable_avg/g' kernel/sched/sched.h
-
           if [ "${{ inputs.DEVICE }}" == "whyred" ]; then
             DEFCONFIG="whyred_defconfig"
           else
             DEFCONFIG="lavender_defconfig"
           fi
-
           export PATH="$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           make O=$OUT_DIR ARCH=${{ env.ARCH }} CC="$GITHUB_WORKSPACE/$CLANG_DIR/bin/clang" CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- $DEFCONFIG
           
@@ -286,15 +277,22 @@ jobs:
       - name: Build Kernel
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          unset SOURCE_DATE_EPOCH
+          REAL_DATE="$(date -u '+%a %b %d %H:%M:%S UTC %Y')"
+          
+          grep -rl "Wed Jul 15 12:00:00 UTC 2018" . | xargs -r sed -i "s/Wed Jul 15 12:00:00 UTC 2018/$REAL_DATE/g" || true
+          grep -rl "1531656000" . | xargs -r sed -i "s/1531656000/$(date +%s)/g" || true
+          
+          if [ -f scripts/mkcompile_h ]; then
+            sed -i "s/TIMESTAMP=.*/TIMESTAMP=\"$REAL_DATE\"/g" scripts/mkcompile_h
+            sed -i "s/timestamp=.*/timestamp=\"$REAL_DATE\"/g" scripts/mkcompile_h
+            sed -i "/UTS_VERSION=/i TIMESTAMP=\"$REAL_DATE\"" scripts/mkcompile_h
+          fi
+          
           export PATH="/usr/lib/ccache:$GITHUB_WORKSPACE/$CLANG_DIR/bin:$PATH"
           export KBUILD_BUILD_USER="${{ env.BUILD_USER }}"
           export KBUILD_BUILD_HOST="${{ env.BUILD_HOST }}"
-          export KBUILD_BUILD_TIMESTAMP="${{ env.BUILD_TIMESTAMP }}"
+          export KBUILD_BUILD_TIMESTAMP="$REAL_DATE"
           export KBUILD_BUILD_VERSION="1"
-
-          sed -i 's/^export KBUILD_BUILD_TIMESTAMP.*/export KBUILD_BUILD_TIMESTAMP := $(shell date -u "+%a %b %d %H:%M:%S UTC %Y")/' Makefile || true
-          sed -i 's/^export KBUILD_BUILD_VERSION.*/export KBUILD_BUILD_VERSION := 1/' Makefile || true
 
           make -j$(nproc --all) O=$OUT_DIR ARCH=${{ env.ARCH }} \
             CC="ccache $GITHUB_WORKSPACE/$CLANG_DIR/bin/clang" \
@@ -309,14 +307,9 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             KCFLAGS="-Wno-address -Wno-implicit-function-declaration" \
-            KBUILD_BUILD_USER="${{ env.BUILD_USER }}" \
-            KBUILD_BUILD_HOST="${{ env.BUILD_HOST }}" \
-            KBUILD_BUILD_TIMESTAMP="${{ env.BUILD_TIMESTAMP }}" \
-            KBUILD_BUILD_VERSION="1" \
             ${{ env.MAKE_TARGET }} 2>&1 | tee build.log
 
           if ! find "$OUT_DIR/arch/arm64/boot" -maxdepth 1 -name "Image*" | grep -q .; then
-            echo "Error: Kernel output image not found!"
             exit 1
           fi
 
@@ -330,7 +323,6 @@ jobs:
             BRANCH_NAME="san-kernel"
             OUTPUT_NAME="Image.xz"
             IMAGE=$(find "$PWD/$OUT_DIR/arch/arm64/boot" -type f \( -name "Image.gz-dtb" -o -name "Image.gz" -o -name "Image.xz" -o -name "Image" \) | head -n1)
-
             if [[ "$IMAGE" == *.xz ]]; then
               cp "$IMAGE" "$GITHUB_WORKSPACE/$OUTPUT_NAME"
             else
@@ -396,7 +388,7 @@ jobs:
         run: |
           CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           AROMA_TEXT=$([ "${{ inputs.ADD_AROMA_INSTALLER }}" == "true" ] && echo "yes" || echo "none")
-
+          
           if [ "${{ inputs.KERNEL_BRANCH }}" == "kernelsu-next" ]; then
             KSU_TEXT='<code>kernelsu-next</code>'
           elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu" ]; then
@@ -432,7 +424,6 @@ jobs:
         if: failure()
         run: |
           MESSAGE=$(printf '❌ <b>BUILD FAILED</b>\n\n💥 <i>Check build.log for details.</i>\n\n<b>By:</b> %s' "${{ env.TELEGRAM_USERNAME }}")
-
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
             -F message_thread_id="342" \
