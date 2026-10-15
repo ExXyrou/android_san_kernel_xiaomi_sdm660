@@ -55,6 +55,11 @@ on:
           - proton
           - aosp
           - weebx
+      ADD_KERNELSU_MANAGER:
+        description: '📦 Bundle Kernel with KSU Manager'
+        required: true
+        default: false
+        type: boolean
       ADD_AROMA_INSTALLER:
         description: '⚙️ Add Aroma Installer'
         required: true
@@ -360,19 +365,21 @@ jobs:
           mkdir -p ksu_managers
           HAS_KSU=false
 
-          if [ "${{ inputs.KERNEL_BRANCH }}" == "kernelsu-next" ]; then
-            gh release download ksun-33068 -R ExXyrou/KernelSU_Manager -p "*.apk" -D ksu_managers
-            HAS_KSU=true
-          elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu" ]; then
-            gh release download resukisu-34681 -R ExXyrou/KernelSU_Manager -p "*.apk" -D ksu_managers
-            HAS_KSU=true
-          elif [ "${{ inputs.KERNEL_BRANCH }}" == "susfs" ]; then
-            gh release download resukisu-susfs-35107 -R ExXyrou/KernelSU_Manager -p "*.apk" -D ksu_managers
-            HAS_KSU=true
-          elif [ "${{ inputs.INJECT_KSU }}" == "true" ]; then
-            gh release download -R backslashxx/KernelSU -p "*.apk" -D ksu_managers
-            mv ksu_managers/*.apk ksu_managers/manager.apk
-            HAS_KSU=true
+          if [ "${{ inputs.ADD_KERNELSU_MANAGER }}" == "true" ]; then
+            if [ "${{ inputs.KERNEL_BRANCH }}" == "kernelsu-next" ]; then
+              gh release download ksun-33068 -R ExXyrou/KernelSU_Manager -p "*.apk" -D ksu_managers
+              HAS_KSU=true
+            elif [ "${{ inputs.KERNEL_BRANCH }}" == "resukisu" ]; then
+              gh release download resukisu-34681 -R ExXyrou/KernelSU_Manager -p "*.apk" -D ksu_managers
+              HAS_KSU=true
+            elif [ "${{ inputs.KERNEL_BRANCH }}" == "susfs" ]; then
+              gh release download resukisu-susfs-35107 -R ExXyrou/KernelSU_Manager -p "*.apk" -D ksu_managers
+              HAS_KSU=true
+            elif [ "${{ inputs.INJECT_KSU }}" == "true" ]; then
+              gh release download -R backslashxx/KernelSU -p "*.apk" -D ksu_managers
+              mv ksu_managers/*.apk ksu_managers/manager.apk
+              HAS_KSU=true
+            fi
           fi
 
           if [ "$HAS_KSU" == "true" ]; then
