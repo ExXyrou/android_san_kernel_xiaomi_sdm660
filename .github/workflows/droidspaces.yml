@@ -45,6 +45,11 @@ on:
         required: true
         default: false
         type: boolean
+      ADD_DROIDSPACES:
+        description: '🧩 Add Droidspaces Support'
+        required: true
+        default: false
+        type: boolean
       COMPILER:
         description: '🛠️ Select Compiler'
         required: true
@@ -145,10 +150,10 @@ jobs:
             [ "$i" = "5" ] && { echo "apt-get update failed after 5 attempts"; exit 1; }
           done
 
-          BASE_PKGS="bc bison flex cpio libssl-dev libelf-dev build-essential python3 python3-pip curl git zip unzip wget ccache libncurses-dev rsync xz-utils zstd"
+          BASE_PKGS="bc bison flex cpio libssl-dev libelf-dev build-essential python3 python3-pip curl git zip unzip wget ccache libncurses-dev rsync xz-utils zstd binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi"
 
           if [ "${{ inputs.COMPILER }}" = "aosp" ]; then
-            PKGS="$BASE_PKGS gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu gcc-arm-linux-gnueabi binutils-arm-linux-gnueabi"
+            PKGS="$BASE_PKGS gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi"
           else
             PKGS="$BASE_PKGS"
           fi
@@ -267,7 +272,16 @@ jobs:
             echo "STRIP_BIN=$GITHUB_WORKSPACE/$CLANG_DIR/bin/llvm-strip" >> $GITHUB_ENV
           fi
 
+      - name: Configure Compiler-Specific KCFLAGS
+        run: |
+          if [ "${{ inputs.COMPILER }}" == "neutron" ]; then
+            echo "KCFLAGS_EXTRA=-Wno-address -Wno-implicit-function-declaration -fintegrated-as" >> $GITHUB_ENV
+          else
+            echo "KCFLAGS_EXTRA=-Wno-address -Wno-implicit-function-declaration" >> $GITHUB_ENV
+          fi
+
       - name: Apply Droidspaces Patches
+        if: ${{ inputs.ADD_DROIDSPACES == true }}
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
           echo "Downloading Droidspaces-OSS repository..."
@@ -331,55 +345,62 @@ jobs:
             enable_config CONFIG_KSU_TAMPER_SYSCALL_TABLE
           fi
 
-          for cfg in CONFIG_TUN \
-            CONFIG_MACVLAN CONFIG_MACVTAP \
-            CONFIG_NETDEVICES CONFIG_NET_CORE \
-            CONFIG_IKCONFIG CONFIG_IKCONFIG_PROC \
-            CONFIG_SYSCTL CONFIG_SYSVIPC CONFIG_POSIX_MQUEUE CONFIG_NAMESPACES CONFIG_PID_NS CONFIG_UTS_NS CONFIG_IPC_NS \
-            CONFIG_SECCOMP CONFIG_SECCOMP_FILTER CONFIG_CGROUPS CONFIG_CGROUP_DEVICE CONFIG_CGROUP_SCHED CONFIG_FAIR_GROUP_SCHED \
-            CONFIG_CGROUP_FREEZER CONFIG_CGROUP_NET_PRIO CONFIG_MEMCG CONFIG_CFS_BANDWIDTH CONFIG_CGROUP_PIDS CONFIG_CGROUP_CPUACCT \
-            CONFIG_DEVTMPFS CONFIG_OVERLAY_FS CONFIG_TMPFS_POSIX_ACL CONFIG_TMPFS_XATTR CONFIG_FW_LOADER CONFIG_FW_LOADER_USER_HELPER CONFIG_FW_LOADER_COMPRESS \
-            CONFIG_NET_NS CONFIG_VETH CONFIG_BRIDGE CONFIG_NETFILTER CONFIG_BRIDGE_NETFILTER CONFIG_NETFILTER_ADVANCED CONFIG_NF_CONNTRACK \
-            CONFIG_IP_NF_IPTABLES CONFIG_IP_NF_FILTER CONFIG_NF_NAT CONFIG_NF_TABLES CONFIG_IP_NF_TARGET_MASQUERADE CONFIG_NETFILTER_XT_TARGET_MASQUERADE \
-            CONFIG_NETFILTER_XT_TARGET_TCPMSS CONFIG_NETFILTER_XT_MATCH_ADDRTYPE CONFIG_NF_CONNTRACK_NETLINK CONFIG_NF_NAT_REDIRECT \
-            CONFIG_IP_ADVANCED_ROUTER CONFIG_IP_MULTIPLE_TABLES CONFIG_NF_CONNTRACK_IPV4 CONFIG_NF_NAT_IPV4 CONFIG_IP_NF_NAT \
-            CONFIG_IPV6 CONFIG_IPV6_MULTIPLE_TABLES CONFIG_IP6_NF_IPTABLES CONFIG_IP6_NF_FILTER CONFIG_IP6_NF_MANGLE CONFIG_IP6_NF_NAT CONFIG_IP6_NF_TARGET_MASQUERADE \
-            CONFIG_NF_CONNTRACK_IPV6 CONFIG_NF_NAT_IPV6 CONFIG_USER_NS \
-            CONFIG_NETFILTER_XT_MATCH_COMMENT CONFIG_NETFILTER_XT_MATCH_STATE CONFIG_NETFILTER_XT_MATCH_CONNTRACK CONFIG_NETFILTER_XT_MATCH_MULTIPORT \
-            CONFIG_NETFILTER_XT_MATCH_HL CONFIG_NETFILTER_XT_TARGET_REJECT CONFIG_IP_NF_TARGET_REJECT CONFIG_NETFILTER_XT_TARGET_LOG CONFIG_IP_NF_TARGET_ULOG \
-            CONFIG_NETFILTER_XT_MATCH_RECENT CONFIG_NETFILTER_XT_MATCH_LIMIT CONFIG_NETFILTER_XT_MATCH_HASHLIMIT CONFIG_NETFILTER_XT_MATCH_OWNER \
-            CONFIG_NETFILTER_XT_MATCH_PKTTYPE CONFIG_NETFILTER_XT_MATCH_MARK CONFIG_NETFILTER_XT_TARGET_MARK CONFIG_IP_SET CONFIG_IP_SET_HASH_IP \
-            CONFIG_IP_SET_HASH_NET CONFIG_NETFILTER_XT_SET CONFIG_NETFILTER_NETLINK_QUEUE CONFIG_NETFILTER_NETLINK_LOG CONFIG_NETFILTER_XT_TARGET_NFLOG; do
-            enable_config "$cfg"
-          done
-          disable_config CONFIG_ANDROID_PARANOID_NETWORK
+          if [ "${{ inputs.ADD_DROIDSPACES }}" == "true" ]; then
+            echo "Enabling Droidspaces kernel configs..."
+            for cfg in CONFIG_TUN \
+              CONFIG_MACVLAN CONFIG_MACVTAP \
+              CONFIG_NETDEVICES CONFIG_NET_CORE \
+              CONFIG_SYSCTL CONFIG_SYSVIPC CONFIG_POSIX_MQUEUE CONFIG_NAMESPACES CONFIG_PID_NS CONFIG_UTS_NS CONFIG_IPC_NS \
+              CONFIG_SECCOMP CONFIG_SECCOMP_FILTER CONFIG_CGROUPS CONFIG_CGROUP_DEVICE CONFIG_CGROUP_SCHED CONFIG_FAIR_GROUP_SCHED \
+              CONFIG_CGROUP_FREEZER CONFIG_CGROUP_NET_PRIO CONFIG_MEMCG CONFIG_CFS_BANDWIDTH CONFIG_CGROUP_PIDS CONFIG_CGROUP_CPUACCT \
+              CONFIG_DEVTMPFS CONFIG_OVERLAY_FS CONFIG_TMPFS_POSIX_ACL CONFIG_TMPFS_XATTR CONFIG_FW_LOADER CONFIG_FW_LOADER_USER_HELPER CONFIG_FW_LOADER_COMPRESS \
+              CONFIG_NET_NS CONFIG_VETH CONFIG_BRIDGE CONFIG_NETFILTER CONFIG_BRIDGE_NETFILTER CONFIG_NETFILTER_ADVANCED CONFIG_NF_CONNTRACK \
+              CONFIG_IP_NF_IPTABLES CONFIG_IP_NF_FILTER CONFIG_NF_NAT CONFIG_NF_TABLES CONFIG_IP_NF_TARGET_MASQUERADE CONFIG_NETFILTER_XT_TARGET_MASQUERADE \
+              CONFIG_NETFILTER_XT_TARGET_TCPMSS CONFIG_NETFILTER_XT_MATCH_ADDRTYPE CONFIG_NF_CONNTRACK_NETLINK CONFIG_NF_NAT_REDIRECT \
+              CONFIG_IP_ADVANCED_ROUTER CONFIG_IP_MULTIPLE_TABLES CONFIG_NF_CONNTRACK_IPV4 CONFIG_NF_NAT_IPV4 CONFIG_IP_NF_NAT \
+              CONFIG_IPV6 CONFIG_IPV6_MULTIPLE_TABLES CONFIG_IP6_NF_IPTABLES CONFIG_IP6_NF_FILTER CONFIG_IP6_NF_MANGLE CONFIG_IP6_NF_NAT CONFIG_IP6_NF_TARGET_MASQUERADE \
+              CONFIG_NF_CONNTRACK_IPV6 CONFIG_NF_NAT_IPV6 CONFIG_USER_NS \
+              CONFIG_NETFILTER_XT_MATCH_COMMENT CONFIG_NETFILTER_XT_MATCH_STATE CONFIG_NETFILTER_XT_MATCH_CONNTRACK CONFIG_NETFILTER_XT_MATCH_MULTIPORT \
+              CONFIG_NETFILTER_XT_MATCH_HL CONFIG_NETFILTER_XT_TARGET_REJECT CONFIG_IP_NF_TARGET_REJECT CONFIG_NETFILTER_XT_TARGET_LOG CONFIG_IP_NF_TARGET_ULOG \
+              CONFIG_NETFILTER_XT_MATCH_RECENT CONFIG_NETFILTER_XT_MATCH_LIMIT CONFIG_NETFILTER_XT_MATCH_HASHLIMIT CONFIG_NETFILTER_XT_MATCH_OWNER \
+              CONFIG_NETFILTER_XT_MATCH_PKTTYPE CONFIG_NETFILTER_XT_MATCH_MARK CONFIG_NETFILTER_XT_TARGET_MARK CONFIG_IP_SET CONFIG_IP_SET_HASH_IP \
+              CONFIG_IP_SET_HASH_NET CONFIG_NETFILTER_XT_SET CONFIG_NETFILTER_NETLINK_QUEUE CONFIG_NETFILTER_NETLINK_LOG CONFIG_NETFILTER_XT_TARGET_NFLOG; do
+              enable_config "$cfg"
+            done
+            disable_config CONFIG_ANDROID_PARANOID_NETWORK
+          fi
+
+          enable_config CONFIG_IKCONFIG
+          enable_config CONFIG_IKCONFIG_PROC
 
           make O=$OUT_DIR ARCH=${{ env.ARCH }} CC="$GITHUB_WORKSPACE/$CLANG_DIR/bin/clang" CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
-          echo "=== Verifying critical Droidspaces configs (must be =y) ==="
-          CRITICAL="CONFIG_TUN CONFIG_MACVLAN CONFIG_MACVTAP CONFIG_OVERLAY_FS CONFIG_USER_NS CONFIG_NET_NS CONFIG_BRIDGE CONFIG_VETH CONFIG_IPV6 CONFIG_CGROUPS CONFIG_IKCONFIG_PROC"
-          NEED_REBUILD=""
-          for cfg in $CRITICAL; do
-            if grep -q "^${cfg}=y" "$OUT_DIR/.config"; then
-              echo "  ✓ ${cfg}=y"
-            elif grep -q "^${cfg}=m" "$OUT_DIR/.config"; then
-              echo "  ⚠ ${cfg}=m  -> forcing to =y"
-              ./scripts/config --file "$OUT_DIR/.config" --force --enable "$cfg"
-              NEED_REBUILD="$NEED_REBUILD $cfg"
-            else
-              echo "  ✗ ${cfg} not set  -> forcing on"
-              ./scripts/config --file "$OUT_DIR/.config" --force --enable "$cfg"
-              NEED_REBUILD="$NEED_REBUILD $cfg"
-            fi
-          done
-
-          if [ -n "$NEED_REBUILD" ]; then
-            echo "Re-running olddefconfig after force-enabling:$NEED_REBUILD"
-            make O=$OUT_DIR ARCH=${{ env.ARCH }} CC="$GITHUB_WORKSPACE/$CLANG_DIR/bin/clang" CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
-            echo "=== Post-olddefconfig state ==="
+          if [ "${{ inputs.ADD_DROIDSPACES }}" == "true" ]; then
+            echo "=== Verifying critical Droidspaces configs (must be =y) ==="
+            CRITICAL="CONFIG_TUN CONFIG_MACVLAN CONFIG_MACVTAP CONFIG_OVERLAY_FS CONFIG_USER_NS CONFIG_NET_NS CONFIG_BRIDGE CONFIG_VETH CONFIG_IPV6 CONFIG_CGROUPS CONFIG_IKCONFIG_PROC"
+            NEED_REBUILD=""
             for cfg in $CRITICAL; do
-              grep "^${cfg}=" "$OUT_DIR/.config" 2>/dev/null || echo "  ⚠ ${cfg} missing"
+              if grep -q "^${cfg}=y" "$OUT_DIR/.config"; then
+                echo "  ✓ ${cfg}=y"
+              elif grep -q "^${cfg}=m" "$OUT_DIR/.config"; then
+                echo "  ⚠ ${cfg}=m  -> forcing to =y"
+                ./scripts/config --file "$OUT_DIR/.config" --force --enable "$cfg"
+                NEED_REBUILD="$NEED_REBUILD $cfg"
+              else
+                echo "  ✗ ${cfg} not set  -> forcing on"
+                ./scripts/config --file "$OUT_DIR/.config" --force --enable "$cfg"
+                NEED_REBUILD="$NEED_REBUILD $cfg"
+              fi
             done
+
+            if [ -n "$NEED_REBUILD" ]; then
+              echo "Re-running olddefconfig after force-enabling:$NEED_REBUILD"
+              make O=$OUT_DIR ARCH=${{ env.ARCH }} CC="$GITHUB_WORKSPACE/$CLANG_DIR/bin/clang" CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
+              echo "=== Post-olddefconfig state ==="
+              for cfg in $CRITICAL; do
+                grep "^${cfg}=" "$OUT_DIR/.config" 2>/dev/null || echo "  ⚠ ${cfg} missing"
+              done
+            fi
           fi
 
       - name: Build Kernel
@@ -414,7 +435,7 @@ jobs:
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            KCFLAGS="-Wno-address -Wno-implicit-function-declaration" \
+            KCFLAGS="${{ env.KCFLAGS_EXTRA }}" \
             ${{ env.MAKE_TARGET }} 2>&1 | tee build.log
 
           if ! find "$OUT_DIR/arch/arm64/boot" -maxdepth 1 -name "Image*" | grep -q .; then
@@ -499,6 +520,7 @@ jobs:
         run: |
           CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           AROMA_TEXT=$([ "${{ inputs.ADD_AROMA_INSTALLER }}" == "true" ] && echo "yes" || echo "none")
+          DROIDSPACES_TEXT=$([ "${{ inputs.ADD_DROIDSPACES }}" == "true" ] && echo "yes" || echo "none")
 
           if [ "${{ inputs.KERNEL_BRANCH }}" == "kernelsu-next" ]; then
             KSU_TEXT='<code>kernelsu-next</code>'
@@ -522,7 +544,13 @@ jobs:
             THREAD_ID="336"
           fi
 
-          MESSAGE=$(printf '📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⚙️ <b>Kernel Type:</b> <code>%s</code>\n📷 <b>Build Type:</b> <code>%s</code>%s\n🦊 <b>KSU:</b> %s\n🛠️ <b>Clang Compiler:</b> <code>%s</code>\n⚙️ <b>Aroma Installer:</b> <code>%s</code>\n\n✅ <i>Note: This kernel fully supports DroidSpaces.</i>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$KERNEL_TYPE" "$CAM_TYPE" "$QTI_LINE" "$KSU_TEXT" "${{ env.CLANG_DISPLAY_VERSION }}" "$AROMA_TEXT" "${{ env.TELEGRAM_USERNAME }}")
+          if [ "${{ inputs.ADD_DROIDSPACES }}" == "true" ]; then
+            DS_LINE=$'\n'$(printf '🧩 <b>Droidspaces:</b> <code>%s</code>' "$DROIDSPACES_TEXT")
+          else
+            DS_LINE=$'\n'$(printf '🧩 <b>Droidspaces:</b> <code>%s</code>' "$DROIDSPACES_TEXT")
+          fi
+
+          MESSAGE=$(printf '📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⚙️ <b>Kernel Type:</b> <code>%s</code>\n📷 <b>Build Type:</b> <code>%s</code>%s\n🦊 <b>KSU:</b> %s\n🛠️ <b>Clang Compiler:</b> <code>%s</code>\n⚙️ <b>Aroma Installer:</b> <code>%s</code>%s\n\n✅ <i>Build finished successfully.</i>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$KERNEL_TYPE" "$CAM_TYPE" "$QTI_LINE" "$KSU_TEXT" "${{ env.CLANG_DISPLAY_VERSION }}" "$AROMA_TEXT" "$DS_LINE" "${{ env.TELEGRAM_USERNAME }}")
 
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
