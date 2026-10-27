@@ -1,0 +1,156 @@
+name: 🛠️ Push Optimize Defconfig (Lavender)
+
+on:
+  workflow_dispatch:
+
+env:
+  KERNEL_DIR: kernel_source
+  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
+  TELEGRAM_GROUP_ID: -1004324974450
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
+jobs:
+  optimize-defconfig:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [original-stable, kernelsu-next, resukisu, susfs]
+
+    steps:
+      - name: Initialize Workflow
+        run: echo "Starting defconfig update for lavender on branch ${{ matrix.branch }}..."
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          repository: ExXyrou/android_san_kernel_xiaomi_sdm660
+          ref: ${{ matrix.branch }}
+          token: ${{ secrets.GH_PAT }}
+          path: ${{ env.KERNEL_DIR }}
+          fetch-depth: 0
+          submodules: false
+
+      - name: Edit Defconfig
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
+          echo "Editing $DEFCONFIG_FILE..."
+
+          enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
+          disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
+          set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
+          set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
+
+          echo "=================================================="
+          echo "  Applying Performance & Stability Optimizations"
+          echo "  Target: SDM660 | Kernel 4.4 | EAS | Gaming + Daily"
+          echo "=================================================="
+
+          echo "[1/8] CMA Size 16MB -> 64MB"
+          set_val CONFIG_CMA_SIZE_MBYTES 64
+          enable_config CONFIG_CMA_SIZE_SEL_MBYTES
+          disable_config CONFIG_CMA_SIZE_SEL_PERCENTAGE
+          disable_config CONFIG_CMA_SIZE_SEL_MIN
+          disable_config CONFIG_CMA_SIZE_SEL_MAX
+
+          echo "[2/8] Default I/O Scheduler: CFQ -> BFQ"
+          disable_config CONFIG_DEFAULT_CFQ
+          enable_config  CONFIG_DEFAULT_BFQ
+          set_str CONFIG_DEFAULT_IOSCHED "bfq"
+
+          echo "[3/8] Disable F2FS runtime consistency check"
+          disable_config CONFIG_F2FS_CHECK_FS
+
+          echo "[4/8] Disable SCHEDSTATS"
+          disable_config CONFIG_SCHEDSTATS
+
+          echo "[5/8] PELT half-life 16ms -> 8ms"
+          disable_config CONFIG_PELT_HALFLIFE_32
+          disable_config CONFIG_PELT_HALFLIFE_16
+          disable_config CONFIG_PELT_HALFLIFE_12
+          enable_config  CONFIG_PELT_HALFLIFE_8
+
+          echo "[6/8] Add CPUFreq Powersave governor"
+          enable_config CONFIG_CPU_FREQ_GOV_POWERSAVE
+
+          echo "[7/8] RCU NOCB: ALL -> NONE"
+          disable_config CONFIG_RCU_NOCB_CPU_ALL
+          disable_config CONFIG_RCU_NOCB_CPU_ZERO
+          enable_config  CONFIG_RCU_NOCB_CPU_NONE
+
+          echo "[8/8] Suppress DEBUG_SECTION_MISMATCH"
+          disable_config CONFIG_DEBUG_SECTION_MISMATCH
+          enable_config  CONFIG_SECTION_MISMATCH_WARN_ONLY
+
+          echo "=================================================="
+          echo "  Verification of Critical Configs"
+          echo "=================================================="
+          grep -E "^CONFIG_CMA_SIZE_MBYTES=|^CONFIG_DEFAULT_BFQ=|^CONFIG_DEFAULT_IOSCHED=|^CONFIG_F2FS_CHECK_FS=|^CONFIG_SCHEDSTATS=|^CONFIG_PELT_HALFLIFE_8=|^CONFIG_CPU_FREQ_GOV_POWERSAVE=|^CONFIG_RCU_NOCB_CPU_NONE=" "$DEFCONFIG_FILE" || true
+
+          echo "All optimization configs applied to $DEFCONFIG_FILE"
+          echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
+
+      - name: Commit & Push Defconfig (with retry + rebase)
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          git config user.name "${{ secrets.GH_USERNAME }}"
+          git config user.email "${{ secrets.GH_EMAIL }}"
+          git rm -r --cached KernelSU || true
+
+          if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
+            echo "No changes detected in defconfig."
+            exit 0
+          fi
+          git add "${{ env.DEFCONFIG_REL_PATH }}"
+          git commit -m "config: [Optimize] defconfig for lavender (${{ matrix.branch }})"
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+          MAX_RETRY=5
+          for i in $(seq 1 $MAX_RETRY); do
+            echo "Push attempt $i/$MAX_RETRY..."
+            if git push origin HEAD:${{ matrix.branch }}; then
+              echo "Push success on attempt $i"
+              exit 0
+            fi
+            echo "Push rejected, fetching & rebasing..."
+            git fetch origin ${{ matrix.branch }}
+            git rebase origin/${{ matrix.branch }} || {
+              echo "Rebase conflict, aborting"
+              git rebase --abort
+              git pull --rebase -X theirs origin ${{ matrix.branch }}
+            }
+            sleep 5
+          done
+          echo "Push failed after $MAX_RETRY attempts"
+          exit 1
+
+  notify:
+    needs: optimize-defconfig
+    if: always()
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Send Telegram Notification (Final Result)
+        run: |
+          RESULT="${{ needs.optimize-defconfig.result }}"
+          if [ "$RESULT" == "success" ]; then
+            ICON="✅"
+          elif [ "$RESULT" == "failure" ]; then
+            ICON="❌"
+          elif [ "$RESULT" == "cancelled" ]; then
+            ICON="⚠️"
+          else
+            ICON="❓"
+          fi
+
+          CHANGELOG=$(printf '🔧 <b>Optimizations Applied:</b>\n• 📦 CMA: <code>16 MB -> 64 MB</code> (gaming + camera)\n• 💾 IOSched: <code>CFQ -> BFQ</code> (eMMC friendly)\n• 🗂️ F2FS check: <code>disabled</code> (faster I/O)\n• 📊 SCHEDSTATS: <code>disabled</code> (less overhead)\n• ⚡ PELT: <code>16ms -> 8ms</code> (snappier response)\n• 🔋 Governor: <code>+ powersave</code> (battery saver)\n• 🔄 RCU NOCB: <code>ALL -> NONE</code> (lower wakeups)\n• 🧹 DEBUG_SECTION_MISMATCH: <code>disabled</code> (cleaner build)')
+
+          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender</code>\n🌿 <b>Target:</b> <code>EAS 4.4 SDM660</code>\n⚙️ <b>Status:</b> <code>%s</code>\n\n%s\n\n🏷️ <b>Tag:</b> <code>#Changelog-Update</code>' "$ICON" "$RESULT" "$CHANGELOG")
+
+          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
+            -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+            -F message_thread_id="345" \
+            -F parse_mode="HTML" \
+            -F text="$MESSAGE"
