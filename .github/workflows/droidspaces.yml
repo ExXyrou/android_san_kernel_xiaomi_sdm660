@@ -298,6 +298,21 @@ jobs:
           echo "Cleaning up downloaded files..."
           rm -rf /tmp/droidspaces
 
+      - name: Patch ARM64 AES Inline Assembly (Newer Clang)
+        if: ${{ inputs.COMPILER == 'neutron' }}
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          echo "Patching AES inline assembly: umov -> mov (required for LLVM 16+)"
+          for f in arch/arm64/crypto/aes-ce-cipher.c \
+                   arch/arm64/crypto/aes-ce-cipher.h \
+                   arch/arm64/crypto/aes-ce-glue.c; do
+            if [ -f "$f" ] && grep -qE 'umov[[:space:]]+%[wx]' "$f"; then
+              echo "  Patching $f"
+              sed -i -E 's/umov([[:space:]]+)%w\[([a-zA-Z0-9_]+)\], v([0-9]+)\.([0-9]+)s\[([0-9]+)\]/mov\1%w[\2], v\3.s[\5]/g' "$f"
+              sed -i -E 's/umov([[:space:]]+)%x\[([a-zA-Z0-9_]+)\], v([0-9]+)\.([0-9]+)d\[([0-9]+)\]/mov\1%x[\2], v\3.d[\5]/g' "$f"
+            fi
+          done
+
       - name: Prepare Configs & Build Options
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
@@ -520,7 +535,7 @@ jobs:
         run: |
           CAM_TYPE=$([ "${{ inputs.BUILD_NEWCAM }}" == "true" ] && echo "newcam" || echo "oldcam")
           AROMA_TEXT=$([ "${{ inputs.ADD_AROMA_INSTALLER }}" == "true" ] && echo "yes" || echo "none")
-          DROIDSPACES_TEXT=$([ "${{ inputs.ADD_DROIDSPACES }}" == "true" ] && echo "yes" || echo "none")
+          DROIDSPACES_TEXT=$([ "${{ inputs.ADD_DROIDSPACES }}" == "true" ] && echo "yes" || echo "no")
 
           if [ "${{ inputs.KERNEL_BRANCH }}" == "kernelsu-next" ]; then
             KSU_TEXT='<code>kernelsu-next</code>'
@@ -544,13 +559,7 @@ jobs:
             THREAD_ID="336"
           fi
 
-          if [ "${{ inputs.ADD_DROIDSPACES }}" == "true" ]; then
-            DS_LINE=$'\n'$(printf '🧩 <b>Droidspaces:</b> <code>%s</code>' "$DROIDSPACES_TEXT")
-          else
-            DS_LINE=$'\n'$(printf '🧩 <b>Droidspaces:</b> <code>%s</code>' "$DROIDSPACES_TEXT")
-          fi
-
-          MESSAGE=$(printf '📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⚙️ <b>Kernel Type:</b> <code>%s</code>\n📷 <b>Build Type:</b> <code>%s</code>%s\n🦊 <b>KSU:</b> %s\n🛠️ <b>Clang Compiler:</b> <code>%s</code>\n⚙️ <b>Aroma Installer:</b> <code>%s</code>%s\n\n✅ <i>Build finished successfully.</i>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$KERNEL_TYPE" "$CAM_TYPE" "$QTI_LINE" "$KSU_TEXT" "${{ env.CLANG_DISPLAY_VERSION }}" "$AROMA_TEXT" "$DS_LINE" "${{ env.TELEGRAM_USERNAME }}")
+          MESSAGE=$(printf '📱 <b>Device:</b> <code>%s</code>\n🏷️ <b>Kernel Name:</b> <code>%s%s</code>\n⚙️ <b>Kernel Type:</b> <code>%s</code>\n📷 <b>Build Type:</b> <code>%s</code>%s\n🦊 <b>KSU:</b> %s\n🛠️ <b>Clang Compiler:</b> <code>%s</code>\n⚙️ <b>Aroma Installer:</b> <code>%s</code>\n🧩 <b>Droidspaces:</b> <code>%s</code>\n\n✅ <i>Build finished successfully.</i>\n\n<b>By:</b> %s' "${{ inputs.DEVICE }}" "${{ env.KERNEL_VERSION }}" "${{ env.KERNEL_NAME_STRING }}" "$KERNEL_TYPE" "$CAM_TYPE" "$QTI_LINE" "$KSU_TEXT" "${{ env.CLANG_DISPLAY_VERSION }}" "$AROMA_TEXT" "$DROIDSPACES_TEXT" "${{ env.TELEGRAM_USERNAME }}")
 
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
