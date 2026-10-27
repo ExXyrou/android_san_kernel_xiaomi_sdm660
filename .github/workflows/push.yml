@@ -1,4 +1,4 @@
-name: 🛠️ Push Optimize Defconfig (Lavender)
+name: 🛠️ Push Optimize Defconfig (Whyred)
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Initialize Workflow
-        run: echo "Starting defconfig update for lavender on branch ${{ matrix.branch }}..."
+        run: echo "Starting defconfig update for whyred on branch ${{ matrix.branch }}..."
 
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
       - name: Edit Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
+          DEFCONFIG_FILE="arch/arm64/configs/whyred_defconfig"
           echo "Editing $DEFCONFIG_FILE..."
 
           enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
@@ -46,49 +46,77 @@ jobs:
 
           echo "=================================================="
           echo "  Applying Performance & Stability Optimizations"
-          echo "  Target: SDM660 | Kernel 4.4 | EAS | Gaming + Daily"
+          echo "  Target: SDM660 | Whyred | Kernel 4.4 | EAS | Gaming + Daily"
           echo "=================================================="
 
-          echo "[1/8] CMA Size 16MB -> 64MB"
+          echo "[1/9] CMA Size 16MB -> 64MB"
           set_val CONFIG_CMA_SIZE_MBYTES 64
           enable_config CONFIG_CMA_SIZE_SEL_MBYTES
           disable_config CONFIG_CMA_SIZE_SEL_PERCENTAGE
           disable_config CONFIG_CMA_SIZE_SEL_MIN
           disable_config CONFIG_CMA_SIZE_SEL_MAX
 
-          echo "[2/8] Default I/O Scheduler: CFQ -> BFQ"
+          echo "[2/9] Default I/O Scheduler: CFQ -> BFQ"
           disable_config CONFIG_DEFAULT_CFQ
           enable_config  CONFIG_DEFAULT_BFQ
           set_str CONFIG_DEFAULT_IOSCHED "bfq"
 
-          echo "[3/8] Disable F2FS runtime consistency check"
+          echo "[3/9] Disable F2FS runtime consistency check"
           disable_config CONFIG_F2FS_CHECK_FS
 
-          echo "[4/8] Disable SCHEDSTATS"
+          echo "[4/9] Disable SCHEDSTATS"
           disable_config CONFIG_SCHEDSTATS
 
-          echo "[5/8] PELT half-life 16ms -> 8ms"
+          echo "[5/9] PELT half-life 16ms -> 8ms"
           disable_config CONFIG_PELT_HALFLIFE_32
           disable_config CONFIG_PELT_HALFLIFE_16
           disable_config CONFIG_PELT_HALFLIFE_12
           enable_config  CONFIG_PELT_HALFLIFE_8
 
-          echo "[6/8] Add CPUFreq Powersave governor"
+          echo "[6/9] Governor setup: schedutil (default) + performance + powersave only"
+          enable_config CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_POWERSAVE
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_USERSPACE
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
+          disable_config CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
+          enable_config CONFIG_CPU_FREQ_GOV_SCHEDUTIL
+          enable_config CONFIG_CPU_FREQ_GOV_PERFORMANCE
           enable_config CONFIG_CPU_FREQ_GOV_POWERSAVE
+          disable_config CONFIG_CPU_FREQ_GOV_USERSPACE
+          disable_config CONFIG_CPU_FREQ_GOV_ONDEMAND
+          disable_config CONFIG_CPU_FREQ_GOV_CONSERVATIVE
+          disable_config CONFIG_CPU_FREQ_GOV_INTERACTIVE
 
-          echo "[7/8] RCU NOCB: ALL -> NONE"
+          echo "[7/9] RCU NOCB: ALL -> NONE"
           disable_config CONFIG_RCU_NOCB_CPU_ALL
           disable_config CONFIG_RCU_NOCB_CPU_ZERO
           enable_config  CONFIG_RCU_NOCB_CPU_NONE
 
-          echo "[8/8] Suppress DEBUG_SECTION_MISMATCH"
+          echo "[8/9] Suppress DEBUG_SECTION_MISMATCH"
           disable_config CONFIG_DEBUG_SECTION_MISMATCH
           enable_config  CONFIG_SECTION_MISMATCH_WARN_ONLY
+
+          echo "[9/9] Re-verify CPU_BOOST remains enabled"
+          enable_config CONFIG_CPU_BOOST
+
+          echo "=================================================="
+          echo "  SAFETY CHECKS (must remain enabled)"
+          echo "=================================================="
+          echo "  KALLSYMS (required for KSU/SUSFS) :"
+          grep -E "^CONFIG_KALLSYMS=" "$DEFCONFIG_FILE" || echo "  WARNING: CONFIG_KALLSYMS not found!"
+          echo "  KERNEL_XIAOMI_WHYRED:"
+          grep -E "^CONFIG_KERNEL_XIAOMI_WHYRED=" "$DEFCONFIG_FILE" || echo "  WARNING: device selector missing!"
+          echo "  PATCH_GCAM_FREEZE:"
+          grep -E "^CONFIG_PATCH_GCAM_FREEZE=" "$DEFCONFIG_FILE" || echo "  (not present)"
 
           echo "=================================================="
           echo "  Verification of Critical Configs"
           echo "=================================================="
-          grep -E "^CONFIG_CMA_SIZE_MBYTES=|^CONFIG_DEFAULT_BFQ=|^CONFIG_DEFAULT_IOSCHED=|^CONFIG_F2FS_CHECK_FS=|^CONFIG_SCHEDSTATS=|^CONFIG_PELT_HALFLIFE_8=|^CONFIG_CPU_FREQ_GOV_POWERSAVE=|^CONFIG_RCU_NOCB_CPU_NONE=" "$DEFCONFIG_FILE" || true
+          grep -E "^CONFIG_CMA_SIZE_MBYTES=|^CONFIG_DEFAULT_BFQ=|^CONFIG_DEFAULT_IOSCHED=|^CONFIG_F2FS_CHECK_FS=|^CONFIG_SCHEDSTATS=|^CONFIG_PELT_HALFLIFE_8=|^CONFIG_RCU_NOCB_CPU_NONE=" "$DEFCONFIG_FILE" || true
+          echo "--- Governor state ---"
+          grep -E "^CONFIG_CPU_FREQ_DEFAULT_GOV_|^CONFIG_CPU_FREQ_GOV_(SCHEDUTIL|PERFORMANCE|POWERSAVE|USERSPACE|ONDEMAND|CONSERVATIVE|INTERACTIVE)=" "$DEFCONFIG_FILE" || true
 
           echo "All optimization configs applied to $DEFCONFIG_FILE"
           echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> $GITHUB_ENV
@@ -105,7 +133,7 @@ jobs:
             exit 0
           fi
           git add "${{ env.DEFCONFIG_REL_PATH }}"
-          git commit -m "config: [Optimize] defconfig for lavender (${{ matrix.branch }})"
+          git commit -m "config: [Optimize] defconfig for whyred (${{ matrix.branch }})"
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
           MAX_RETRY=5
           for i in $(seq 1 $MAX_RETRY); do
@@ -145,9 +173,9 @@ jobs:
             ICON="❓"
           fi
 
-          CHANGELOG=$(printf '🔧 <b>Optimizations Applied:</b>\n• 📦 CMA: <code>16 MB -> 64 MB</code> (gaming + camera)\n• 💾 IOSched: <code>CFQ -> BFQ</code> (eMMC friendly)\n• 🗂️ F2FS check: <code>disabled</code> (faster I/O)\n• 📊 SCHEDSTATS: <code>disabled</code> (less overhead)\n• ⚡ PELT: <code>16ms -> 8ms</code> (snappier response)\n• 🔋 Governor: <code>+ powersave</code> (battery saver)\n• 🔄 RCU NOCB: <code>ALL -> NONE</code> (lower wakeups)\n• 🧹 DEBUG_SECTION_MISMATCH: <code>disabled</code> (cleaner build)')
+          CHANGELOG=$(printf '🔧 <b>Optimizations Applied:</b>\n• 📦 CMA: <code>16 MB -> 64 MB</code> (gaming + camera)\n• 💾 IOSched: <code>CFQ -> BFQ</code> (eMMC friendly)\n• 🗂️ F2FS check: <code>disabled</code> (faster I/O)\n• 📊 SCHEDSTATS: <code>disabled</code> (less overhead)\n• ⚡ PELT: <code>16ms -> 8ms</code> (snappier response)\n• 🔋 Governors: <code>schedutil (default) + performance + powersave</code>\n• 🔄 RCU NOCB: <code>ALL -> NONE</code> (lower wakeups)\n• 🧹 DEBUG_SECTION_MISMATCH: <code>disabled</code> (cleaner build)\n\n🛡️ <b>Safety Preserved:</b>\n• 🦊 <code>KALLSYMS</code> kept enabled (KSU/SUSFS)\n• 📷 <code>PATCH_GCAM_FREEZE</code> kept enabled\n• 🧲 <code>HALL_SENSOR</code> kept enabled')
 
-          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>lavender</code>\n🌿 <b>Target:</b> <code>EAS 4.4 SDM660</code>\n⚙️ <b>Status:</b> <code>%s</code>\n\n%s\n\n🏷️ <b>Tag:</b> <code>#Changelog-Update</code>' "$ICON" "$RESULT" "$CHANGELOG")
+          MESSAGE=$(printf '%s <b>San Kernel Defconfig Optimization</b>\n\n📱 <b>Device:</b> <code>whyred</code>\n🌿 <b>Target:</b> <code>EAS 4.4 SDM660</code>\n⚙️ <b>Status:</b> <code>%s</code>\n\n%s\n\n🏷️ <b>Tag:</b> <code>#Changelog-Update</code>' "$ICON" "$RESULT" "$CHANGELOG")
 
           curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
             -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
