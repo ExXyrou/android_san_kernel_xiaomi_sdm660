@@ -1,3 +1,4 @@
+int mdss_dsi_panel_status_check(struct mdss_panel_data *pdata){return 0;}
 /* Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify

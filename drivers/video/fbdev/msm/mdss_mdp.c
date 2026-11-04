@@ -4466,7 +4466,7 @@ static int mdss_mdp_parse_dt_misc(struct platform_device *pdev)
 	mdata->has_fixed_qos_arbiter_enabled =
 			of_property_read_bool(pdev->dev.of_node,
 		 "qcom,mdss-has-fixed-qos-arbiter-enabled");
-	mdata->idle_pc_enabled = of_property_read_bool(pdev->dev.of_node,
+	mdata->idle_pc_enabled = false;
 		 "qcom,mdss-idle-power-collapse-enabled");
 
 	prop = of_find_property(pdev->dev.of_node, "batfet-supply", NULL);
