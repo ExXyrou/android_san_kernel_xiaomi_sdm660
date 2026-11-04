@@ -21,6 +21,7 @@ on:
           - kernelsu-next
           - resukisu
           - susfs
+          - test-build
       LOCALVERSION:
         description: '🏷️ Custom Kernel Name (e.g., MyKernel-v1.0)'
         required: true
