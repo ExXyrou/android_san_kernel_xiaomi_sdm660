@@ -1,4 +1,4 @@
-name: 🖥️ Fix Display Flicker (Lavender)
+name: 🛠️ Push Optimize Lavender
 
 on:
   workflow_dispatch:
@@ -7,104 +7,155 @@ env:
   KERNEL_DIR: kernel_source
   BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
   TELEGRAM_GROUP_ID: -1004324974450
-  TARGET_BRANCH: test-build
-  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
 jobs:
-  fix-display-flicker:
+  optimize-defconfig:
+    name: Optimize Defconfig (${{ matrix.branch }})
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [original-stable, kernelsu-next, resukisu, susfs]
 
     steps:
       - name: Initialize Workflow
-        run: echo "Starting display flicker fix for lavender on branch ${{ env.TARGET_BRANCH }}..."
+        run: echo "Starting defconfig optimization for lavender on branch ${{ matrix.branch }}..."
 
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           repository: ExXyrou/android_san_kernel_xiaomi_sdm660
-          ref: ${{ env.TARGET_BRANCH }}
+          ref: ${{ matrix.branch }}
           token: ${{ secrets.GH_PAT }}
           path: ${{ env.KERNEL_DIR }}
           fetch-depth: 0
           submodules: false
 
-      - name: Apply Display Flicker Fixes
+      - name: Optimize Defconfig
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          echo "🔧 Applying display flicker fixes for lavender..."
+          set -euo pipefail
+          DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
+          echo "::group::Editing $DEFCONFIG_FILE"
 
-          # 1. Update defconfig — disable problematic MDSS features, enable KCAL
-          CFG="arch/arm64/configs/lavender_defconfig"
-          echo "Editing $CFG..."
-          scripts/config --file "$CFG" --disable CONFIG_FB_MSM_MDSS_DSI_CTRL_STATUS
-          scripts/config --file "$CFG" --disable CONFIG_FB_MSM_MDSS_LPM_ENABLE
-          scripts/config --file "$CFG" --disable CONFIG_FB_MSM_MDSS_MDP_IDLE_PC
-          scripts/config --file "$CFG" --enable  CONFIG_FB_MSM_MDSS_KCAL_CTRL
+          enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
+          disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
+          set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
+          set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
 
-          # 2. Patch DTSI — disable ESD check, LPM, idle-pc, ULPS, dynamic FPS
-          echo "Patching DTSI files..."
-          find arch/arm64/boot/dts -name '*.dtsi' -exec sed -i -E \
-            -e 's/qcom,esd-check-enabled.*=.*<1>/qcom,esd-check-enabled = <0>/g' \
-            -e 's/qcom,mdss-dsi-pan-enable-lpm.*=.*<1>/qcom,mdss-dsi-pan-enable-lpm = <0>/g' \
-            -e 's/qcom,mdss-dsi-idle-pc-enabled.*=.*<1>/qcom,mdss-dsi-idle-pc-enabled = <0>/g' \
-            -e 's/qcom,mdss-dsi-ulps-enabled.*=.*<1>/qcom,mdss-dsi-ulps-enabled = <0>/g' \
-            -e 's/qcom,mdss-dsi-dynamic-fps.*=.*<1>/qcom,mdss-dsi-dynamic-fps = <0>/g' {} \;
+          echo "========== MEMORY & SWAP OPTIMIZATION =========="
+          # ZRAM + LZ4 (fast, low-CPU compression)
+          enable_config CONFIG_SWAP
+          enable_config CONFIG_ZRAM
+          enable_config CONFIG_ZSMALLOC
+          enable_config CONFIG_LZ4_COMPRESS
+          enable_config CONFIG_CRYPTO_LZ4
+          # Better page-cache reclaim decisions
+          enable_config CONFIG_CLEANCACHE
+          # Compressed-swap backend (harmonious with zram)
+          enable_config CONFIG_FRONTSWAP
+          # Keep reclaim helpers already enabled in defconfig
+          enable_config CONFIG_PROCESS_RECLAIM
+          enable_config CONFIG_BALANCE_ANON_FILE_RECLAIM
 
-          # 3. Patch panel driver — disable CABC, DSI status, ESD check
-          echo "Patching mdss_dsi_panel.c..."
-          PANEL_C=$(find drivers/video/fbdev/msm -name "mdss_dsi_panel.c")
-          sed -i -E 's/(cabc_enabled|dsi_status_enabled|esd_check_enabled)[[:space:]]*=.*true/\1 = false/g' "$PANEL_C" || true
+          echo "========== SCHEDULER OVERHEAD REDUCTION =========="
+          disable_config CONFIG_SCHED_DEBUG
+          disable_config CONFIG_SCHED_INFO
 
-          # 4. Patch MDP — disable idle power collapse
-          echo "Patching mdss_mdp.c..."
-          MDP="drivers/video/fbdev/msm/mdss_mdp.c"
-          sed -i -E 's/(idle_pc_enabled[[:space:]]*=).*/\1 false;/' "$MDP" || true
+          echo "========== I/O TRACE OVERHEAD REDUCTION =========="
+          disable_config CONFIG_BLK_DEV_IO_TRACE
 
-          # 5. Force status check to always return 0 (prevents false ESD triggers)
-          echo "Patching *status*.c files..."
-          STATUS_C=$(find drivers/video/fbdev/msm -name "*status*.c")
-          for f in $STATUS_C; do
-            if ! grep -q "mdss_dsi_panel_status_check" "$f"; then
-              sed -i '1i int mdss_dsi_panel_status_check(struct mdss_panel_data *pdata){return 0;}' "$f" || true
-            fi
+          echo "========== CONFIRM PERFORMANCE DEFAULTS =========="
+          # CPU governor: schedutil (EAS-friendly) + boost
+          enable_config CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
+          enable_config CONFIG_CPU_BOOST
+          enable_config CONFIG_DEFAULT_USE_ENERGY_AWARE
+          enable_config CONFIG_SCHED_TUNE
+          enable_config CONFIG_STUNE_ASSIST
+          enable_config CONFIG_DYNAMIC_STUNE_BOOST
+
+          # I/O scheduler: BFQ (responsiveness + multitasking)
+          enable_config CONFIG_IOSCHED_BFQ
+          enable_config CONFIG_DEFAULT_BFQ
+          set_str CONFIG_DEFAULT_IOSCHED "bfq"
+
+          # Network stack: FQ_CODEL + Westwood (gaming-friendly low latency)
+          enable_config CONFIG_NET_SCH_FQ_CODEL
+          enable_config CONFIG_DEFAULT_FQ_CODEL
+          set_str CONFIG_DEFAULT_NET_SCH "fq_codel"
+          enable_config CONFIG_DEFAULT_WESTWOOD
+          set_str CONFIG_DEFAULT_TCP_CONG "westwood"
+
+          # Build optimization
+          enable_config CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
+
+          echo "========== VERIFY CRITICAL ITEMS =========="
+          for opt in CONFIG_SWAP CONFIG_ZRAM CONFIG_ZSMALLOC \
+                     CONFIG_LZ4_COMPRESS CONFIG_CRYPTO_LZ4 \
+                     CONFIG_CLEANCACHE CONFIG_FRONTSWAP \
+                     CONFIG_IOSCHED_BFQ CONFIG_DEFAULT_BFQ \
+                     CONFIG_NET_SCH_FQ_CODEL CONFIG_DEFAULT_FQ_CODEL \
+                     CONFIG_DEFAULT_WESTWOOD CONFIG_CPU_BOOST \
+                     CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE; do
+              if grep -q "^${opt}=y" "$DEFCONFIG_FILE"; then
+                  echo "  ✅ $opt=y"
+              else
+                  echo "  ❌ MISSING: $opt"
+              fi
+          done
+          for opt in CONFIG_SCHED_DEBUG CONFIG_SCHED_INFO CONFIG_BLK_DEV_IO_TRACE; do
+              if grep -q "^# ${opt} is not set" "$DEFCONFIG_FILE"; then
+                  echo "  ✅ $opt disabled"
+              else
+                  echo "  ⚠️  $opt still enabled"
+              fi
           done
 
-          echo "✅ All display flicker fixes applied."
+          echo "::endgroup::"
+          echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> "$GITHUB_ENV"
+          echo "BRANCH_NAME=${{ matrix.branch }}" >> "$GITHUB_ENV"
 
-      - name: Commit & Push Fixes (with retry + rebase)
+      - name: Commit & Push Defconfig (with retry + rebase)
         working-directory: ${{ env.KERNEL_DIR }}
         run: |
-          git config user.name  "${{ secrets.GH_USERNAME }}"
+          set -euo pipefail
+          git config user.name "${{ secrets.GH_USERNAME }}"
           git config user.email "${{ secrets.GH_EMAIL }}"
 
-          git add -A arch/arm64/configs/lavender_defconfig \
-                    arch/arm64/boot/dts \
-                    drivers/video/fbdev/msm
+          # Clean accidental KernelSU tracking (safe no-op)
+          git rm -r --cached KernelSU >/dev/null 2>&1 || true
 
-          if git diff --cached --quiet; then
-            echo "No changes detected. Nothing to commit."
+          if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
+            echo "ℹ️ No changes detected in defconfig."
+            echo "COMMIT_SHA=none" >> "$GITHUB_ENV"
+            echo "CHANGE_COUNT=0" >> "$GITHUB_ENV"
             exit 0
           fi
 
-          git commit -m "fix(display): [lavender] prevent screen flicker & black blink (${{ env.TARGET_BRANCH }})"
+          git add "${{ env.DEFCONFIG_REL_PATH }}"
+          git commit -m "config: [Optimize] lavendercfg for ${BRANCH_NAME} (EAS SDM660 3/4GB)"
 
-          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          CHANGE_COUNT=$(git show --stat --oneline HEAD | tail -1 | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | paste -sd ' ' -)
+          echo "COMMIT_SHA=${COMMIT_SHA}" >> "$GITHUB_ENV"
+          echo "CHANGE_COUNT=${CHANGE_COUNT:-0 changes}" >> "$GITHUB_ENV"
 
+          git remote set-url origin "https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git"
           MAX_RETRY=5
           for i in $(seq 1 $MAX_RETRY); do
             echo "🔁 Push attempt $i/$MAX_RETRY..."
-            if git push origin HEAD:${{ env.TARGET_BRANCH }}; then
+            if git push origin "HEAD:${{ matrix.branch }}"; then
               echo "✅ Push success on attempt $i"
               exit 0
             fi
             echo "⚠️ Push rejected, fetching & rebasing..."
-            git fetch origin ${{ env.TARGET_BRANCH }}
-            git rebase origin/${{ env.TARGET_BRANCH }} || {
+            git fetch origin "${{ matrix.branch }}"
+            git rebase "origin/${{ matrix.branch }}" || {
               echo "⚠️ Rebase conflict, aborting"
               git rebase --abort
-              git pull --rebase -X theirs origin ${{ env.TARGET_BRANCH }}
+              git pull --rebase -X theirs origin "${{ matrix.branch }}"
             }
             sleep 5
           done
@@ -112,24 +163,54 @@ jobs:
           exit 1
 
   notify:
-    needs: fix-display-flicker
+    name: Notify (Telegram)
+    needs: optimize-defconfig
     if: always()
     runs-on: ubuntu-22.04
 
     steps:
       - name: Send Telegram Notification (Final Result)
+        env:
+          RESULT: ${{ needs.optimize-defconfig.result }}
+          JOB_MSG: ${{ needs.optimize-defconfig.outputs.job_msg }}
+          BRANCH: ${{ matrix.branch }}
         run: |
-          RESULT="${{ needs.fix-display-flicker.result }}"
-          if   [ "$RESULT" == "success"   ]; then ICON="✅"
-          elif [ "$RESULT" == "failure"   ]; then ICON="❌"
-          elif [ "$RESULT" == "cancelled" ]; then ICON="⚠️"
-          else                                     ICON="❓"
+          # Determine icon based on job result
+          if [ "$RESULT" = "success" ]; then
+            ICON="✅"
+            STATUS="Success"
+          elif [ "$RESULT" = "failure" ]; then
+            ICON="❌"
+            STATUS="Failed"
+          elif [ "$RESULT" = "cancelled" ]; then
+            ICON="⚠️"
+            STATUS="Cancelled"
+          else
+            ICON="❓"
+            STATUS="Unknown"
           fi
 
-          MESSAGE=$(printf '%s <b>San Kernel Display Fix</b>\n\n📱 <b>Device:</b> <code>lavender</code>\n🌿 <b>Target:</b> <code>EAS 4.4 SDM660</code>\n🌿 <b>Branch:</b> <code>test-build</code>\n⚙️ <b>Status:</b> <code>%s</code>\n🔧 <b>Fix:</b> <code>Screen Flicker / Black Blink</code>\n\n<b>Thnx:</b> @Arsya_S <code>for script fix kernel source</code>' "$ICON" "$RESULT")
+          # Note: matrix.branch is not available in this job — iterate over all branches
+          BRANCHES=("original-stable" "kernelsu-next" "resukisu" "susfs")
 
-          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
-            -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
-            -F message_thread_id="345" \
-            -F parse_mode="HTML" \
-            -F text="$MESSAGE"
+          MESSAGE=$(cat <<EOF
+${ICON} <b>San Kernel — Push Optimize Lavender</b>
+
+📱 <b>Device:</b> <code>lavender</code> (Redmi Note 7)
+🌿 <b>Kernel:</b> <code>4.4 EAS • SDM660</code>
+🎯 <b>Target:</b> <code>Android 10–13 • 3/4 GB RAM</code>
+⚙️ <b>Status:</b> <code>${STATUS}</code>
+🌐 <b>Branches:</b> <code>${BRANCHES[*]}</code>
+🔧 <b>Changes:</b> <code>Memory/ZRAM • Scheduler • I/O • Network</code>
+🕐 <b>Time:</b> <code>$(date -u +'%Y-%m-%d %H:%M UTC')</code>
+
+<i>Optimization applied via GitHub Actions</i>
+EOF
+)
+
+          curl -sS -X POST "https://api.telegram.org/bot${BOT_API}/sendMessage" \
+            -F "chat_id=${TELEGRAM_GROUP_ID}" \
+            -F "message_thread_id=345" \
+            -F "parse_mode=HTML" \
+            -F "disable_web_page_preview=true" \
+            -F "text=${MESSAGE}"
