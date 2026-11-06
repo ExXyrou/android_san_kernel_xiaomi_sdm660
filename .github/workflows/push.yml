@@ -1,163 +1,145 @@
-name: 🛠️ Push Optimize Lavender
+name: 🔍 PixelProp Scanner
 
 on:
   workflow_dispatch:
+    inputs:
+      search_text:
+        description: 'Text to find'
+        required: true
+        default: 'PixelProp'
 
 env:
-  KERNEL_DIR: kernel_source
+  REPO_DIR: frameworks_base
   BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
   TELEGRAM_GROUP_ID: -1004324974450
+  TARGET_REPO: crdroidandroid/android_frameworks_base
+  TARGET_BRANCH: "11.0"
 
 jobs:
-  optimize-defconfig:
-    name: Optimize Defconfig (${{ matrix.branch }})
+  scan:
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        branch: [original-stable, kernelsu-next, resukisu, susfs]
-
     steps:
-      - name: Initialize Workflow
-        run: echo "Starting defconfig optimization for lavender on branch ${{ matrix.branch }}..."
-
-      - name: Checkout Repository
+      - name: Checkout Target Repository
         uses: actions/checkout@v4
         with:
-          repository: ExXyrou/android_san_kernel_xiaomi_sdm660
-          ref: ${{ matrix.branch }}
-          token: ${{ secrets.GH_PAT }}
-          path: ${{ env.KERNEL_DIR }}
-          fetch-depth: 0
-          submodules: false
+          repository: ${{ env.TARGET_REPO }}
+          ref: ${{ env.TARGET_BRANCH }}
+          token: ${{ secrets.GH_PAT }}   # bisa dihapus kalau repo public
+          path: ${{ env.REPO_DIR }}
+          fetch-depth: 1
 
-      - name: Optimize Defconfig
-        working-directory: ${{ env.KERNEL_DIR }}
+      - name: Search Text in Repository
+        working-directory: ${{ env.REPO_DIR }}
         run: |
-          set -euo pipefail
-          DEFCONFIG_FILE="arch/arm64/configs/lavender_defconfig"
-          echo "::group::Editing $DEFCONFIG_FILE"
+          SEARCH="${{ inputs.search_text }}"
+          OUTPUT_DIR="${{ github.workspace }}/output"
+          MATCHED_DIR="$OUTPUT_DIR/matched_files"
+          mkdir -p "$MATCHED_DIR"
 
-          enable_config()  { ./scripts/config --file "$DEFCONFIG_FILE" --enable  "$1"; }
-          disable_config() { ./scripts/config --file "$DEFCONFIG_FILE" --disable "$1"; }
-          set_str()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-str "$1" "$2"; }
-          set_val()        { ./scripts/config --file "$DEFCONFIG_FILE" --set-val "$1" "$2"; }
+          LOG_FILE="$OUTPUT_DIR/matched_locations.txt"
+          {
+            echo "=== Files containing '${SEARCH}' ==="
+            echo "Repository: ${{ env.TARGET_REPO }}"
+            echo "Branch    : ${{ env.TARGET_BRANCH }}"
+            echo ""
+          } > "$LOG_FILE"
 
-          echo "========== MEMORY & SWAP OPTIMIZATION =========="
-          # ZRAM + LZ4 (fast, low-CPU compression)
-          enable_config CONFIG_SWAP
-          enable_config CONFIG_ZRAM
-          enable_config CONFIG_ZSMALLOC
-          enable_config CONFIG_LZ4_COMPRESS
-          enable_config CONFIG_CRYPTO_LZ4
-          # Better page-cache reclaim decisions
-          enable_config CONFIG_CLEANCACHE
-          # Compressed-swap backend (harmonious with zram)
-          enable_config CONFIG_FRONTSWAP
-          # Keep reclaim helpers already enabled in defconfig
-          enable_config CONFIG_PROCESS_RECLAIM
-          enable_config CONFIG_BALANCE_ANON_FILE_RECLAIM
+          # -I = skip binary, -l = list filename only, exclude .git
+          grep -rIl --exclude-dir=.git "$SEARCH" . > /tmp/matched.txt 2>/dev/null || true
+          COUNT=$(wc -l < /tmp/matched.txt)
+          echo "Found $COUNT file(s) matching '${SEARCH}'"
 
-          echo "========== SCHEDULER OVERHEAD REDUCTION =========="
-          disable_config CONFIG_SCHED_DEBUG
-          disable_config CONFIG_SCHED_INFO
+          if [ "$COUNT" -gt 0 ]; then
+            while IFS= read -r file; do
+              [ -z "$file" ] && continue
+              rel_path="${file#./}"
+              mkdir -p "$MATCHED_DIR/$(dirname "$rel_path")"
+              cp "$file" "$MATCHED_DIR/$rel_path"
+              echo "$rel_path" >> "$LOG_FILE"
+            done < /tmp/matched.txt
 
-          echo "========== I/O TRACE OVERHEAD REDUCTION =========="
-          disable_config CONFIG_BLK_DEV_IO_TRACE
+            # Arsip sebagai backup
+            ( cd "$MATCHED_DIR" && tar -czf "$OUTPUT_DIR/matched_files.tar.gz" . )
+          fi
 
-          echo "========== CONFIRM PERFORMANCE DEFAULTS =========="
-          # CPU governor: schedutil (EAS-friendly) + boost
-          enable_config CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
-          enable_config CONFIG_CPU_BOOST
-          enable_config CONFIG_DEFAULT_USE_ENERGY_AWARE
-          enable_config CONFIG_SCHED_TUNE
-          enable_config CONFIG_STUNE_ASSIST
-          enable_config CONFIG_DYNAMIC_STUNE_BOOST
+          {
+            echo ""
+            echo "Total: $COUNT file(s)"
+          } >> "$LOG_FILE"
 
-          # I/O scheduler: BFQ (responsiveness + multitasking)
-          enable_config CONFIG_IOSCHED_BFQ
-          enable_config CONFIG_DEFAULT_BFQ
-          set_str CONFIG_DEFAULT_IOSCHED "bfq"
+          echo "MATCH_COUNT=$COUNT"     >> $GITHUB_ENV
+          echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
+          echo "SEARCH_TEXT=$SEARCH"    >> $GITHUB_ENV
 
-          # Network stack: FQ_CODEL + Westwood (gaming-friendly low latency)
-          enable_config CONFIG_NET_SCH_FQ_CODEL
-          enable_config CONFIG_DEFAULT_FQ_CODEL
-          set_str CONFIG_DEFAULT_NET_SCH "fq_codel"
-          enable_config CONFIG_DEFAULT_WESTWOOD
-          set_str CONFIG_DEFAULT_TCP_CONG "westwood"
+      - name: Upload Artifact (Backup)
+        if: env.MATCH_COUNT != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelprop-scan
+          path: ${{ env.OUTPUT_DIR }}
+          retention-days: 3
 
-          # Build optimization
-          enable_config CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE
-
-          echo "========== VERIFY CRITICAL ITEMS =========="
-          for opt in CONFIG_SWAP CONFIG_ZRAM CONFIG_ZSMALLOC \
-                     CONFIG_LZ4_COMPRESS CONFIG_CRYPTO_LZ4 \
-                     CONFIG_CLEANCACHE CONFIG_FRONTSWAP \
-                     CONFIG_IOSCHED_BFQ CONFIG_DEFAULT_BFQ \
-                     CONFIG_NET_SCH_FQ_CODEL CONFIG_DEFAULT_FQ_CODEL \
-                     CONFIG_DEFAULT_WESTWOOD CONFIG_CPU_BOOST \
-                     CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE; do
-              if grep -q "^${opt}=y" "$DEFCONFIG_FILE"; then
-                  echo "  ✅ $opt=y"
-              else
-                  echo "  ❌ MISSING: $opt"
-              fi
-          done
-          for opt in CONFIG_SCHED_DEBUG CONFIG_SCHED_INFO CONFIG_BLK_DEV_IO_TRACE; do
-              if grep -q "^# ${opt} is not set" "$DEFCONFIG_FILE"; then
-                  echo "  ✅ $opt disabled"
-              else
-                  echo "  ⚠️  $opt still enabled"
-              fi
-          done
-
-          echo "::endgroup::"
-          echo "DEFCONFIG_REL_PATH=$DEFCONFIG_FILE" >> "$GITHUB_ENV"
-          echo "BRANCH_NAME=${{ matrix.branch }}" >> "$GITHUB_ENV"
-
-      - name: Commit & Push Defconfig (with retry + rebase)
-        working-directory: ${{ env.KERNEL_DIR }}
+      - name: Send Results to Telegram
         run: |
-          set -euo pipefail
-          git config user.name "${{ secrets.GH_USERNAME }}"
-          git config user.email "${{ secrets.GH_EMAIL }}"
+          OUTPUT_DIR="${{ env.OUTPUT_DIR }}"
+          COUNT="${{ env.MATCH_COUNT }}"
+          SEARCH="${{ env.SEARCH_TEXT }}"
 
-          # Clean accidental KernelSU tracking (safe no-op)
-          git rm -r --cached KernelSU >/dev/null 2>&1 || true
-
-          if git diff --quiet "${{ env.DEFCONFIG_REL_PATH }}"; then
-            echo "ℹ️ No changes detected in defconfig."
-            echo "COMMIT_SHA=none" >> "$GITHUB_ENV"
-            echo "CHANGE_COUNT=0" >> "$GITHUB_ENV"
+          if [ "$COUNT" = "0" ] || [ -z "$COUNT" ]; then
+            MESSAGE=$(printf '🔍 <b>Scan Finished</b>\n\n📦 <b>Repo:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>\n🔎 <b>Text:</b> <code>%s</code>\n\n<i>Tidak ada file yang cocok.</i>' \
+              "${{ env.TARGET_REPO }}" "${{ env.TARGET_BRANCH }}" "$SEARCH")
+            curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
+              -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+              -F message_thread_id="345" \
+              -F text="$MESSAGE" \
+              -F parse_mode="HTML"
             exit 0
           fi
 
-          git add "${{ env.DEFCONFIG_REL_PATH }}"
-          git commit -m "config: [Optimize] lavendercfg for ${BRANCH_NAME} (EAS SDM660 3/4GB)"
+          # 1) Kirim daftar lokasi (txt) + ringkasan
+          SUMMARY=$(printf '🔍 <b>Scan Finished</b>\n\n📦 <b>Repo:</b> <code>%s</code>\n🌿 <b>Branch:</b> <code>%s</code>\n🔎 <b>Text:</b> <code>%s</code>\n📊 <b>Files matched:</b> <code>%s</code>\n\n📄 Daftar lokasi file terlampir. File yang cocok & arsip menyusul.' \
+            "${{ env.TARGET_REPO }}" "${{ env.TARGET_BRANCH }}" "$SEARCH" "$COUNT")
 
-          COMMIT_SHA=$(git rev-parse --short HEAD)
-          CHANGE_COUNT=$(git show --stat --oneline HEAD | tail -1 | grep -oE '[0-9]+ insertion|[0-9]+ deletion' | paste -sd ' ' -)
-          echo "COMMIT_SHA=${COMMIT_SHA}" >> "$GITHUB_ENV"
-          echo "CHANGE_COUNT=${CHANGE_COUNT:-0 changes}" >> "$GITHUB_ENV"
+          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
+            -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+            -F message_thread_id="345" \
+            -F document=@"$OUTPUT_DIR/matched_locations.txt" \
+            -F caption="$SUMMARY" \
+            -F parse_mode="HTML"
+          sleep 2
 
-          git remote set-url origin "https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git"
-          MAX_RETRY=5
-          for i in $(seq 1 $MAX_RETRY); do
-            echo "🔁 Push attempt $i/$MAX_RETRY..."
-            if git push origin "HEAD:${{ matrix.branch }}"; then
-              echo "✅ Push success on attempt $i"
-              exit 0
+          # 2) Kirim tiap file yang cocok (limit Telegram 50MB/file)
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            rel_path="${file#./}"
+            full_path="$OUTPUT_DIR/matched_files/$rel_path"
+            [ -f "$full_path" ] || continue
+
+            SIZE=$(stat -c%s "$full_path" 2>/dev/null || echo 0)
+            if [ "$SIZE" -lt 50000000 ]; then
+              curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
+                -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+                -F message_thread_id="345" \
+                -F document=@"$full_path" \
+                -F caption="📄 <code>$rel_path</code>" \
+                -F parse_mode="HTML"
+              sleep 2
+            else
+              curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendMessage" \
+                -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+                -F message_thread_id="345" \
+                -F text="⚠️ <code>$rel_path</code> dilewati (terlalu besar: $SIZE bytes)" \
+                -F parse_mode="HTML"
+              sleep 2
             fi
-            echo "⚠️ Push rejected, fetching & rebasing..."
-            git fetch origin "${{ matrix.branch }}"
-            git rebase "origin/${{ matrix.branch }}" || {
-              echo "⚠️ Rebase conflict, aborting"
-              git rebase --abort
-              git pull --rebase -X theirs origin "${{ matrix.branch }}"
-            }
-            sleep 5
-          done
-          echo "❌ Push failed after $MAX_RETRY attempts"
-          exit 1
+          done < /tmp/matched.txt
+
+          # 3) Kirim arsip semua file (backup)
+          if [ -f "$OUTPUT_DIR/matched_files.tar.gz" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_API }}/sendDocument" \
+              -F chat_id="${{ env.TELEGRAM_GROUP_ID }}" \
+              -F message_thread_id="345" \
+              -F document=@"$OUTPUT_DIR/matched_files.tar.gz" \
+              -F caption="🗜️ Arsip semua file yang cocok (backup)" \
+              -F parse_mode="HTML"
+          fi
