@@ -1,0 +1,170 @@
+name: 🛠️ Update Kernel Stream
+
+on:
+  workflow_dispatch:
+    inputs:
+      current_sublevel:
+        description: 'Current kernel stream'
+        default: '325'
+        required: true
+      new_sublevel:
+        description: 'Update kernel stream'
+        required: true
+
+env:
+  KERNEL_DIR: kernel_source
+  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
+  TELEGRAM_GROUP_ID: -1004324974450
+  WORKFLOW_BRANCH: main-build
+  WORKFLOW_FILE: .github/workflows/search_replace.yml
+
+jobs:
+  update_kernel_stream:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        branch: [original-stable, kernelsu-next, resukisu, susfs]
+    outputs:
+      old_version: ${{ steps.replace.outputs.old_version }}
+      new_version: ${{ steps.replace.outputs.new_version }}
+      has_changes: ${{ steps.replace.outputs.has_changes }}
+
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          repository: ExXyrou/android_san_kernel_xiaomi_sdm660
+          ref: ${{ matrix.branch }}
+          token: ${{ secrets.GH_PAT }}
+          path: ${{ env.KERNEL_DIR }}
+          fetch-depth: 0
+
+      - name: Find & Replace Kernel Sublevel
+        id: replace
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          SEARCH="${{ inputs.current_sublevel }}"
+          REPLACE="${{ inputs.new_sublevel }}"
+
+          TARGET_FILES="Makefile arch/arm64/configs/lavender_defconfig arch/arm64/configs/whyred_defconfig"
+
+          VERSION=$(awk -F' *= *' '/^VERSION =/ {print $2; exit}' Makefile)
+          PATCHLEVEL=$(awk -F' *= *' '/^PATCHLEVEL =/ {print $2; exit}' Makefile)
+          OLD_SUBLEVEL=$(awk -F' *= *' '/^SUBLEVEL =/ {print $2; exit}' Makefile)
+
+          for FILE in $TARGET_FILES; do
+            if [ -f "$FILE" ]; then
+              sed -i "s/\b${SEARCH}\b/${REPLACE}/g" "$FILE"
+            fi
+          done
+
+          NEW_SUBLEVEL=$(awk -F' *= *' '/^SUBLEVEL =/ {print $2; exit}' Makefile)
+
+          echo "old_version=${VERSION}.${PATCHLEVEL}.${OLD_SUBLEVEL}" >> "$GITHUB_OUTPUT"
+          echo "new_version=${VERSION}.${PATCHLEVEL}.${NEW_SUBLEVEL}" >> "$GITHUB_OUTPUT"
+
+          if ! git diff --quiet -- $TARGET_FILES; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and Push
+        if: steps.replace.outputs.has_changes == 'true'
+        working-directory: ${{ env.KERNEL_DIR }}
+        run: |
+          git config user.name "${{ secrets.GH_USERNAME }}"
+          git config user.email "${{ secrets.GH_EMAIL }}"
+          git rm -r --cached KernelSU || true
+
+          git add Makefile arch/arm64/configs/lavender_defconfig arch/arm64/configs/whyred_defconfig
+          git commit -m "chore: update stream kernel sublevel ${{ inputs.current_sublevel }} -> ${{ inputs.new_sublevel }}"
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
+
+          git pull --rebase --autostash origin ${{ matrix.branch }}
+          git push origin HEAD:${{ matrix.branch }}
+
+  update_workflow_default:
+    needs: update_kernel_stream
+    if: needs.update_kernel_stream.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Workflow Branch
+        uses: actions/checkout@v4
+        with:
+          repository: ExXyrou/android_san_kernel_xiaomi_sdm660
+          ref: ${{ env.WORKFLOW_BRANCH }}
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+
+      - name: Update Current Sublevel Default
+        run: |
+          WF="${{ env.WORKFLOW_FILE }}"
+          NEW="${{ inputs.new_sublevel }}"
+          CUR="${{ inputs.current_sublevel }}"
+
+          if [ ! -f "$WF" ]; then
+            echo "::warning::Workflow file not found: $WF — skipping default update."
+            exit 0
+          fi
+
+          if [ -z "$NEW" ] || [ "$NEW" = "$CUR" ]; then
+            echo "No default update needed (current='$CUR', new='$NEW')."
+            exit 0
+          fi
+
+          sed -i "/current_sublevel:/,/required:/ s/default: '.*'/default: '${NEW}'/" "$WF"
+
+          git config user.name "${{ secrets.GH_USERNAME }}"
+          git config user.email "${{ secrets.GH_EMAIL }}"
+          git add "$WF"
+
+          if git diff --cached --quiet; then
+            echo "Default already up to date, nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "ci: bump default current_sublevel to ${NEW}"
+          git push origin HEAD:${WORKFLOW_BRANCH}
+
+  notify:
+    needs: [update_kernel_stream, update_workflow_default]
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Send Telegram Notification
+        env:
+          RESULT: ${{ needs.update_kernel_stream.result }}
+          OLD_VERSION: ${{ needs.update_kernel_stream.outputs.old_version }}
+          NEW_VERSION: ${{ needs.update_kernel_stream.outputs.new_version }}
+          HAS_CHANGES: ${{ needs.update_kernel_stream.outputs.has_changes }}
+        run: |
+          if [ -z "$OLD_VERSION" ]; then
+            OLD_VERSION="4.4.${{ inputs.current_sublevel }}"
+          fi
+          if [ -z "$NEW_VERSION" ]; then
+            NEW_VERSION="4.4.${{ inputs.new_sublevel }}"
+          fi
+
+          if [ "$RESULT" = "success" ] && [ "$HAS_CHANGES" = "true" ]; then
+            ICON="✅"
+          elif [ "$RESULT" = "success" ]; then
+            ICON="ℹ️"
+          else
+            ICON="❌"
+          fi
+
+          BRANCHES=$(printf '<code>%s</code>\n' original-stable kernelsu-next resukisu susfs)
+
+          MESSAGE=$(printf '%s <b>Kernel Sublevel Update Stream</b>\n\n📦 <b>Version:</b> <code>%s</code> → <code>%s</code>\n🌿 <b>Branches:</b>\n%s' "$ICON" "$OLD_VERSION" "$NEW_VERSION" "$BRANCHES")
+
+          curl -s -X POST "https://api.telegram.org/bot${BOT_API}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_GROUP_ID}" \
+            --data-urlencode "message_thread_id=345" \
+            --data-urlencode "parse_mode=HTML" \
+            --data-urlencode "text=${MESSAGE}"
