@@ -5,7 +5,7 @@ on:
     inputs:
       current_sublevel:
         description: 'Current kernel stream'
-        default: '325'
+        default: '302'
         required: true
       new_sublevel:
         description: 'Update kernel stream'
@@ -13,14 +13,14 @@ on:
 
 env:
   KERNEL_DIR: kernel_source
-  BOT_API: 8934276155:AAHEEXMoUt7KUXtz4MEzNuAj1K14cnIKYiI
-  TELEGRAM_GROUP_ID: -1004324974450
+  BOT_API: ${{ secrets.TELEGRAM_BOT_API }}
+  TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID }}
   WORKFLOW_BRANCH: main-build
-  WORKFLOW_FILE: .github/workflows/search_replace.yml
+  WORKFLOW_FILE: .github/workflows/update_kernel_stream.yml
 
 jobs:
   update_kernel_stream:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     strategy:
@@ -34,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout Kernel Source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ExXyrou/android_san_kernel_xiaomi_sdm660
           ref: ${{ matrix.branch }}
@@ -81,7 +81,7 @@ jobs:
           git rm -r --cached KernelSU || true
 
           git add Makefile arch/arm64/configs/lavender_defconfig arch/arm64/configs/whyred_defconfig
-          git commit -m "chore: update stream kernel sublevel ${{ inputs.current_sublevel }} -> ${{ inputs.new_sublevel }}"
+          git commit -m "chore: update kernel stream ${{ inputs.current_sublevel }} -> ${{ inputs.new_sublevel }}"
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/ExXyrou/android_san_kernel_xiaomi_sdm660.git
 
           git pull --rebase --autostash origin ${{ matrix.branch }}
@@ -90,12 +90,12 @@ jobs:
   update_workflow_default:
     needs: update_kernel_stream
     if: needs.update_kernel_stream.result == 'success'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - name: Checkout Workflow Branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ExXyrou/android_san_kernel_xiaomi_sdm660
           ref: ${{ env.WORKFLOW_BRANCH }}
@@ -135,7 +135,7 @@ jobs:
   notify:
     needs: [update_kernel_stream, update_workflow_default]
     if: always()
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Send Telegram Notification
         env:
@@ -161,7 +161,7 @@ jobs:
 
           BRANCHES=$(printf '<code>%s</code>\n' original-stable kernelsu-next resukisu susfs)
 
-          MESSAGE=$(printf '%s <b>Kernel Sublevel Update Stream</b>\n\n📦 <b>Version:</b> <code>%s</code> → <code>%s</code>\n🌿 <b>Branches:</b>\n%s' "$ICON" "$OLD_VERSION" "$NEW_VERSION" "$BRANCHES")
+          MESSAGE=$(printf '%s <b>Update Kernel Stream</b>\n\n📦 <b>Version:</b> <code>%s</code> → <code>%s</code>\n🌿 <b>Branches:</b>\n%s' "$ICON" "$OLD_VERSION" "$NEW_VERSION" "$BRANCHES")
 
           curl -s -X POST "https://api.telegram.org/bot${BOT_API}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_GROUP_ID}" \
