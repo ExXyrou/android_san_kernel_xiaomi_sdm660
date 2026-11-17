@@ -5,7 +5,7 @@ on:
     inputs:
       current_sublevel:
         description: 'Current kernel stream'
-        default: '302'
+        default: '365'
         required: true
       new_sublevel:
         description: 'Update kernel stream'
@@ -118,7 +118,7 @@ jobs:
             exit 0
           fi
 
-          sed -i "/current_sublevel:/,/required:/ s/default: '.*'/default: '${NEW}'/" "$WF"
+          sed -i "/current_sublevel:/,/required:/ s/default: '365'/" "$WF"
 
           git config user.name "${{ secrets.GH_USERNAME }}"
           git config user.email "${{ secrets.GH_EMAIL }}"
