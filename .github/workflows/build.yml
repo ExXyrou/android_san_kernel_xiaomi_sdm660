@@ -19,6 +19,7 @@ on:
         options:
           - original-stable
           - kernelsu-next
+          - kernelsu-next-new
           - resukisu
           - susfs
           - test-build
